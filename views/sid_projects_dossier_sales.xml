@@ -10,9 +10,14 @@
             <field name="inherit_id" ref="sale.view_order_tree"/>
             <field name="arch" type="xml">
                 <xpath expr="//field[@name='quotations_id']" position="before">
-                    <button name="action_open_dossier_folder" type="action" string="Dossier"
-                            attrs="{'invisible': ['|',('state', '!=','sale'),('tiene_dossier', '!=',True)]}" icon="fa-book"
-                            class="oe_inline"/>
+                    <button
+                            name="%(sid_projects_dossier.action_open_dossier_folder)d"
+                            type="action"
+                            string="Dossier"
+                            icon="fa-book"
+                            class="oe_inline"
+                            attrs="{'invisible': ['|',('state','!=','sale'),('tiene_dossier','!=',True)]}"
+                    />
                 </xpath>
             </field>
         </record>
