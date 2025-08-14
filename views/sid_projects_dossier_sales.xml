@@ -1,10 +1,5 @@
 <odoo>
-        <record id="action_open_dossier_folder" model="ir.actions.act_window">
-            <field name="name">Abrir Dossier</field>
-            <field name="res_model">sale.order</field>
-            <field name="view_mode">form</field>
-            <field name="target">current</field>
-        </record>
+<data>
         <!--SALE ORDER - ORDERS 	model="ir.ui.view" 	sale.view_order_tree-->
 
         <record id="sid_projects_dossier_sales_tree" model="ir.ui.view">
@@ -28,4 +23,5 @@
                 </xpath>
             </field>
         </record>
+</data>
 </odoo>
