@@ -13,7 +13,7 @@
                 </xpath>
                 <xpath expr="//field[@name='quotations_id']" position="before">
                     <button
-                            name="%(sid_projects_dossier.action_open_dossier_folder)d"
+                            name="action_open_dossier_folder"
                             type="action"
                             string="Dossier"
                             icon="fa-book"
