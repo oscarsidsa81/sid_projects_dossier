@@ -2,12 +2,12 @@
 <odoo>
 
     <!-- Categorías de etiquetas ligadas al workspace -->
-    <record id="sid_tagcat_doc" model="documents.tag.category">
+    <record id="sid_tagcat_doc" model="documents.facet">
         <field name="name">DOC</field>
         <field name="folder_id" ref="sid_workspace_quality_dossiers"/>
     </record>
 
-    <record id="sid_tagcat_estado" model="documents.tag.category">
+    <record id="sid_tagcat_estado" model="documents.facet">
         <field name="name">ESTADO</field>
         <field name="folder_id" ref="sid_workspace_quality_dossiers"/>
     </record>
