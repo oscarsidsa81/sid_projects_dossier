@@ -6,7 +6,7 @@
     'summary': 'Control de Base Imponible',
     'description': 'Módulo de gestión de Dossieres de Calidad',
     'author': 'oscarsidsa81',
-    'depends': ['base','sale_management','documents','oct_sale_extra_fields'],
+    'depends': ['base','crm','sale_management','documents','oct_sale_extra_fields'],
     'data': [
         'views/sid_projects_dossier_sales.xml',
         'data/document_actions.xml',
