@@ -1,0 +1,42 @@
+<odoo>
+    <data>
+
+        <!--SALE ORDER - ORDERS 	model="ir.ui.view" 	sale.view_order_tree-->
+
+        <record id="sid_projects_dossier_sales" model="ir.ui.view">
+            <field name="name">sid_projects_dossier_sales.tree</field>
+            <field name="model">sale.order</field>
+            <field name="priority" eval="1000"/>
+            <field name="inherit_id" ref="sale.view_order_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='quotations_id']" position="before">
+                    <button name="action_open_dossier_folder" type="action" string="Dossier"
+                            attrs="{'invisible': ['|',('state', '!=','sale'),('tiene_dossier', '!=',True)]}" icon="fa-book"
+                            class="oe_inline"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!--SALE ORDER - ORDERS 	model="ir.ui.view" 	sale.sale_order_view_search_inherit_sale-->
+
+        <record id="sid_sale_order_amount_control.amount_total_and_contract_search" model="ir.ui.view">
+            <field name="name">amount_total_and_contract_search.search</field>
+            <field name="model">sale.order</field>
+            <field name="priority" eval="17"/>
+            <field name="inherit_id" ref="sale.sale_order_view_search_inherit_sale"/>
+            <field name="arch" type="xml">
+                <xpath expr="//search[1]/field[@name='name']" position="after">
+                    <field name="quotations_id" string="Referencia Pedido/Contrato"/>
+                </xpath>
+                <search>
+                    <searchpanel>
+                        <field name="invoice_status" enable_counters="1" select="multi"/>
+                        <field name="currency_id" enable_counters="1" select="multi"/>
+                        <field name="team_id" enable_counters="1" select="multi"/>
+                    </searchpanel>
+                </search>
+            </field>
+        </record>
+
+    </data>
+</odoo>
