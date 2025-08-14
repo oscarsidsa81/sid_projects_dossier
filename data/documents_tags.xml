@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<odoo noupdate="1">
+<odoo>
 
     <!-- Categorías de etiquetas ligadas al workspace -->
     <record id="sid_tagcat_doc" model="documents.tag.category">

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<odoo noupdate="1">
+<odoo>
    <!-- Workspace raíz -->
     <record id="sid_workspace_quality_dossiers" model="documents.folder">
         <field name="name">Dossieres de calidad</field>
@@ -13,7 +13,6 @@
         <field name="sequence">10</field>
         <field name="company_id" eval="False"/>        <!-- todas las compañías -->
     </record>
-
        <!-- Subespacios 2024..2030 -->
     <record id="sid_folder_2024" model="documents.folder">
         <field name="name">2024</field>
