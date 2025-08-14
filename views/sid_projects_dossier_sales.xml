@@ -6,7 +6,7 @@
             <field name="name">sid_projects_dossier_sales_tree</field>
             <field name="model">sale.order</field>
             <field name="priority" eval="1000"/>
-            <field name="inherit_id" ref="sale.view_order_tree"/>
+            <field name="inherit_id" ref="sale.view_quotation_tree_with_onboarding"/>
             <field name="arch" type="xml">
                 <xpath expr="//tree[1]/field[@name='opportunity_group_id']" position="after">
                     <field name="tiene_dossier" optional="hide" readonly='0'/>
