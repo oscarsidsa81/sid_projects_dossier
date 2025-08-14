@@ -8,7 +8,7 @@
     'author': 'oscarsidsa81',
     'depends': ['base','sale_management','documents'],
     'data': [
-        'views/sid_projects_dossier.xml',
+        'views/sid_projects_dossier_sales.xml',
         'data/document_actions.xml',
         'data/document_folders.xml',
         'data/documents_tags.xml',
