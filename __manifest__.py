@@ -1,7 +1,7 @@
 {
     'name': 'sid_projects_dossier',
     'version': '1.0',
-    'category': ['Sales','Documentation','Projects'],
+    'category': 'Sales',
     'license': 'AGPL-3',
     'summary': 'Control de Base Imponible',
     'description': 'Módulo de gestión de Dossieres de Calidad',
