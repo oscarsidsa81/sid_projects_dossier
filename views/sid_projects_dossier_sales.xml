@@ -14,7 +14,7 @@
                 <xpath expr="//field[@name='quotations_id']" position="before">
                     <button
                             name="action_open_dossier_folder"
-                            type="action"
+                            type="object"
                             string="Dossier"
                             icon="fa-book"
                             class="oe_inline"
