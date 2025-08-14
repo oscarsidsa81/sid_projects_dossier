@@ -10,7 +10,7 @@
             <field name="inherit_id" ref="sale.view_order_tree"/>
             <field name="arch" type="xml">
                 <xpath expr="//tree[1]/field[@name='opportunity_group_id']" position="after">
-                    <field name="x_dossier" optional="hide" readonly='0'/>
+                    <field name="tiene_dossier" optional="hide" readonly='0'/>
                 </xpath>
                 <xpath expr="//field[@name='quotations_id']" position="before">
                     <button
