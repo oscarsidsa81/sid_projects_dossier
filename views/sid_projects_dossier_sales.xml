@@ -1,5 +1,5 @@
 <odoo>
-<data>
+    <data>
         <!--SALE ORDER - ORDERS 	model="ir.ui.view" 	sale.view_order_tree-->
 
         <record id="sid_projects_dossier_sales_tree" model="ir.ui.view">
@@ -23,5 +23,29 @@
                 </xpath>
             </field>
         </record>
-</data>
+
+        <record id="sid_projects_dossier_sales_form_buttons" model="ir.ui.view">
+            <field name="name">sale.order.form</field>
+            <field name="model">sale.order</field>
+            <field name="priority" eval="16"/>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//form/sheet" position="before">
+                    <!--    <br/> -->
+                    <span>
+                        <button class="btn-info" icon="fa-plus" name="action_create_dossier_folders"
+                                type="object" groups="__export__.res_groups_106_7375280c,sales_team.group_sale_manager"
+                                string=" Crear Dossier"/>
+                    </span>
+                    <span>
+                        <button class="btn-info" icon="fa-book" name="action_open_dossier_folder"
+                                groups="__export__.res_groups_106_7375280c,sales_team.group_sale_manager" type="object"
+                                string=" Ver Dossier"/>
+                    </span>
+                </xpath>
+            </field>
+        </record>
+
+
+    </data>
 </odoo>
