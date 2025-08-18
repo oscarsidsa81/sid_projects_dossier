@@ -137,7 +137,10 @@ class SaleOrder ( models.Model ) :
         SaleOrder = self.env['sale.order']
 
         if folder :
-            sale_orders = SaleOrder.search ( [('quotations_id.name', '=', so.quotations_id.name)] )
+            sale_orders = SaleOrder.search ( [
+                ('quotations_id', '=', so.quotations_id.id),
+                ('partner_id', '=', so.partner_id.id),
+            ] )
             sale_orders.write ( {'tiene_dossier' : True} )
 
             return {
@@ -155,7 +158,10 @@ class SaleOrder ( models.Model ) :
                 'target' : 'current',
             }
         else :
-            sale_orders = SaleOrder.search ( [('quotations_id.name', '=', so.quotations_id.name)] )
+            sale_orders = SaleOrder.search ( [
+                ('quotations_id', '=', so.quotations_id.id),
+                ('partner_id', '=', so.partner_id.id),
+            ] )
             sale_orders.write ( {'tiene_dossier' : False} )
             return {
                 'type' : 'ir.actions.client',
@@ -191,6 +197,7 @@ class SaleOrder ( models.Model ) :
         confirmed_orders = self.env['sale.order'].search ( [
             ('state', '=', 'sale'),
             ('quotations_id', '=', so.quotations_id.id),
+            ('partner_id', '=', so.partner_id.id),
         ] )
 
         # ¿ya existe?
