@@ -205,6 +205,7 @@ class SaleOrder ( models.Model ) :
         existing_folder = self._find_existing_folder_for ( so )
         if existing_folder :
             confirmed_orders.write ( {'tiene_dossier' : True} )
+            confirmed_orders.write ( {'dossier_asignado' : folder.name} )
             orders_str = ', '.join ( confirmed_orders.mapped ( 'name' ) ) or _ ( '(ninguno)' )
             return {
                 'type' : 'ir.actions.client',
@@ -241,6 +242,7 @@ class SaleOrder ( models.Model ) :
 
         # Marcar pedidos confirmados
         confirmed_orders.write ( {'tiene_dossier' : True} )
+        confirmed_orders.write ( {'dossier_asignado' : folder.name} )
 
         estados = ['Proveedor', 'Enviado', 'Comentarios', 'Rechazado', 'Aprobado']
         folders_sin_estado = ['0. Plantillas', '6.b Notificaciones', '6.b Autorizaciones de Envío', '11. Logística',
