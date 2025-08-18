@@ -6,6 +6,7 @@
             <field name="name">sale.order.sid_tree</field>
             <field name="model">sale.order</field>
             <field name="priority" eval="16"/>
+            <field name="inherit_id" eval="False"/>   <!-- 👈 limpia el parent en la BD -->
             <field name="mode">primary</field>
             <field name="arch" type="xml">
                 <tree string="Contratos con Dossier" sample="1" decoration-muted="state == 'cancel'">
