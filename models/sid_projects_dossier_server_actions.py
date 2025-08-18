@@ -60,26 +60,31 @@ class SaleOrder ( models.Model ) :
             ) % self.XMLID_DOSSIER_OWNER_GROUP )
 
         users = group.users
-        if len ( users ) == 0 :
+        if not users :
             raise UserError ( _ (
-                "El grupo '%s' no tiene usuarios. Asigna exactamente uno."
+                "El grupo '%s' no tiene usuarios. Asigna al menos uno."
             ) % (group.display_name or 'Administrador de Dossieres de calidad') )
 
-        if len ( users ) > 1 :
+        # Filtrar SOLO los empleados cuyo departamento se llama EXACTAMENTE "Calidad"
+        emp_in_calidad = self.env['hr.employee'].search ( [
+            ('user_id', 'in', users.ids),
+            ('department_id.name', '=', 'Calidad'),
+        ] )
+
+        owners = emp_in_calidad.mapped ( 'user_id' )
+
+        if len ( owners ) == 0 :
             raise UserError ( _ (
-                "El grupo '%s' tiene %s usuarios. Debe haber exactamente uno."
+                "En el grupo '%s' hay %s usuario(s), pero ninguno pertenece al departamento 'Calidad'."
             ) % (group.display_name or 'Administrador de Dossieres de calidad', len ( users )) )
 
-        user = users[0]
-
-        # Buscar el empleado vinculado a este usuario
-        employee = self.env['hr.employee'].search ( [('user_id', '=', user.id)], limit=1 )
-        if not employee or not employee.department_id or employee.department_id.name != "Calidad" :
+        if len ( owners ) > 1 :
+            nombres = ', '.join ( owners.mapped ( 'name' ) )
             raise UserError ( _ (
-                "El usuario asignado al grupo '%s' debe pertenecer al departamento 'Calidad'."
-            ) % (group.display_name or 'Administrador de Dossieres de calidad') )
+                "En el grupo '%s' hay %s usuarios en el departamento 'Calidad'. Debe haber exactamente uno: %s"
+            ) % (group.display_name or 'Administrador de Dossieres de calidad', len ( owners ), nombres) )
 
-        return user.id
+        return owners.id
 
     def _get_current_year_folder(self) :
         """Resuelve la carpeta del año en curso por xmlid sid_folder_YYYY."""
