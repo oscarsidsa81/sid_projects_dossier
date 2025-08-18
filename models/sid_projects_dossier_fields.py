@@ -4,8 +4,14 @@ from odoo import fields, models, api
 class SaleOrderDossier ( models.Model ) :
     _inherit = 'sale.order'
 
-    tiene_dossier = fields.Boolean (
+    dossier_asignado = fields.Char (
         string="Dossier",
+        store=True,
+        help="Campo para definir la carpeta de Documentos"
+    )
+
+    tiene_dossier = fields.Boolean (
+        string="Tiene Dossier",
         help="	Campo para saber si se creó un dossier para este nº de contrato",
         store=True,
         readonly=True,
