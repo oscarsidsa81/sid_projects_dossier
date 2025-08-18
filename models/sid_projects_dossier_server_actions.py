@@ -20,8 +20,8 @@ class SaleOrder ( models.Model ) :
     XMLID_PATTERN_YEAR_FOLDER = 'sid_projects_dossier.sid_folder_%(year)s'
 
     # Grupo con exactamente 1 usuario (propietario de solicitudes)
-    XMLID_DOSSIER_OWNER_GROUP = 'sid_dossier_management.group_dossier_manager'
-    XMLID_DOSSIER_USER_GROUP = 'sid_dossier_management.group_dossier_user'
+    XMLID_DOSSIER_OWNER_GROUP = 'group_dossier_manager'
+    XMLID_DOSSIER_USER_GROUP = 'group_dossier_user'
 
     # -------------------------------------------------------------------------
     # Utilidades
