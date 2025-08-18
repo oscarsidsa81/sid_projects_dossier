@@ -70,6 +70,49 @@ class SaleOrder(models.Model):
             _logger.warning("No se pudo crear mail.activity para %s id=%s: %s", record._name, record.id, e)
 
     # -------------------------------------------------------------------------
+    # Abrir carpeta de dossier (y marcar tiene_dossier)
+    # -------------------------------------------------------------------------
+    def action_open_dossier_folder(self) :
+        self.ensure_one ()
+        so = self
+
+        folder = self._find_existing_folder_for ( so )
+        SaleOrder = self.env['sale.order']
+
+        if folder :
+            sale_orders = SaleOrder.search ( [('quotations_id.name', '=', so.quotations_id.name)] )
+            sale_orders.write ( {'tiene_dossier' : True} )
+
+            return {
+                'name' : _ ( 'Document Folder' ),
+                'type' : 'ir.actions.act_window',
+                'res_model' : 'documents.document',
+                'view_mode' : 'tree,kanban,form',
+                'context' : {
+                    'searchpanel_default_folder_id' : folder.id,
+                    'searchpanel_default_folder_id_domain' : [('folder_id', '=', folder.id)],
+                    'group_by' : 'folder_id',
+                    'search_default_folder_id' : folder.id,
+                    'default_folder_id' : folder.id,
+                },
+                'target' : 'current',
+            }
+        else :
+            sale_orders = SaleOrder.search ( [('quotations_id.name', '=', so.quotations_id.name)] )
+            sale_orders.write ( {'tiene_dossier' : False} )
+            return {
+                'type' : 'ir.actions.client',
+                'tag' : 'display_notification',
+                'params' : {
+                    'title' : _ ( 'Sin carpeta' ),
+                    'message' : _ ( 'No se encontró carpeta para el dossier de %s' ) % (
+                                so.quotations_id.name or so.name),
+                    'type' : 'warning',
+                    'sticky' : False,
+                }
+            }
+
+    # -------------------------------------------------------------------------
     # Crear dossier + estructura + facetas + solicitudes (bajo el AÑO actual)
     # -------------------------------------------------------------------------
     def action_create_dossier_folders(self):
