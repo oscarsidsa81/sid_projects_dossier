@@ -3,218 +3,120 @@ from odoo import api, models, fields, _
 from odoo.exceptions import UserError
 import re
 import logging
+from datetime import timedelta  # <-- NUEVO
 
-_logger = logging.getLogger ( __name__ )
+_logger = logging.getLogger(__name__)
 
-
-class SaleOrder ( models.Model ) :
+class SaleOrder(models.Model):
     _inherit = 'sale.order'
 
-    # -------------------------------------------------------------------------
-    # XMLIDs fijos
-    # -------------------------------------------------------------------------
-    XMLID_FACETS_SOURCE_FOLDER = 'sid_projects_dossier.sid_workspace_quality_dossiers'  # workspace raíz (para facetas)
-    XMLID_EXCLUDE_FOLDER = 'sid_projects_dossier.sid_workspace_archived'  # workspace "Archivado"
-
-    # Patrón del xmlid para las carpetas de año: sid_folder_YYYY
-    XMLID_PATTERN_YEAR_FOLDER = 'sid_projects_dossier.sid_folder_%(year)s'
-
-    # Grupo con exactamente 1 usuario (propietario de solicitudes)
-    XMLID_DOSSIER_OWNER_GROUP = 'sid_projects_dossier.group_dossier_manager'
-    XMLID_DOSSIER_USER_GROUP = 'sid_projects_dossier.group_dossier_user'
+    # ... (mantén tus constantes y utilidades previas)
 
     # -------------------------------------------------------------------------
-    # Utilidades
+    # Helpers adicionales
     # -------------------------------------------------------------------------
-    @api.model
-    def _clean_for_similarity(self, name) :
-        if not name :
-            return ''
-        name = name.lower ()
-        name = re.sub ( r"[,\.;:\?\!@#\$%\^&\*\(\)_\-\+=<>/\\\|\[\]\{\}\s]+", "", name )
-        return name
-
-    @api.model
-    def _is_similar(self, name, targets) :
-        base = self._clean_for_similarity ( name )
-        for t in targets or [] :
-            if self._clean_for_similarity ( t ) in base :
-                return True
-        return False
-
-    @api.model
-    def _extract_raw_name(self, so) :
-        qname = (so.quotations_id and so.quotations_id.name or '').strip ()
-        return (qname.split ()[0] if qname else '').strip ()
-
-    def _get_folder_by_xmlid(self, xmlid) :
-        rec = self.env.ref ( xmlid, raise_if_not_found=False )
-        return rec or self.env['documents.folder'].browse ()
-
-    def _get_request_owner_id_from_group(self) :
-        group = self.env.ref ( self.XMLID_DOSSIER_OWNER_GROUP, raise_if_not_found=False )
-        if not group :
-            raise UserError ( _ (
-                "No se encuentra el grupo de administrador de dossieres (%s). "
-                "Carga el XML de seguridad."
-            ) % self.XMLID_DOSSIER_OWNER_GROUP )
-
-        users = group.users
-        if not users :
-            raise UserError ( _ (
-                "El grupo '%s' no tiene usuarios. Asigna al menos uno."
-            ) % (group.display_name or 'Administrador de Dossieres de calidad') )
-
-        # Filtrar SOLO los empleados cuyo departamento se llama EXACTAMENTE "Calidad"
-        emp_in_calidad = self.env['hr.employee'].search ( [
-            ('user_id', 'in', users.ids),
-            ('department_id.name', '=', 'Calidad'),
-        ] )
-
-        owners = emp_in_calidad.mapped ( 'user_id' )
-
-        if len ( owners ) == 0 :
-            raise UserError ( _ (
-                "En el grupo '%s' hay %s usuario(s), pero ninguno pertenece al departamento 'Calidad'."
-            ) % (group.display_name or 'Administrador de Dossieres de calidad', len ( users )) )
-
-        if len ( owners ) > 1 :
-            nombres = ', '.join ( owners.mapped ( 'name' ) )
-            raise UserError ( _ (
-                "En el grupo '%s' hay %s usuarios en el departamento 'Calidad'. Debe haber exactamente uno: %s"
-            ) % (group.display_name or 'Administrador de Dossieres de calidad', len ( owners ), nombres) )
-
-        return owners.id
-
-    def _get_current_year_folder(self) :
-        """Resuelve la carpeta del año en curso por xmlid sid_folder_YYYY."""
-        year = fields.Date.context_today ( self ).year
-        xmlid = self.XMLID_PATTERN_YEAR_FOLDER % {'year' : year}
-        folder = self._get_folder_by_xmlid ( xmlid )
-        if not folder :
-            # Si no existe la carpeta del año, avisamos con error claro.
-            # (Alternativa: crearla aquí o caer al workspace raíz)
-            raise UserError ( _ (
-                "No existe la carpeta del año en curso (%s). "
-                "Asegúrate de tener datos iniciales con id externo '%s'."
-            ) % (year, xmlid) )
-        return folder
-
-    @api.model
-    def _find_existing_folder_for(self, so) :
+    def _get_pm_user_id_required(self, so):
         """
-        1) Buscar por 'ilike' el raw_name (excluye 'Archivado')
-        2) Si hay candidatos, tomar el nombre más corto como base y buscar por 'base%'
+        Devuelve el user_id del Project Manager, o lanza UserError si no está definido
+        o no apunta a un usuario utilizable.
         """
-        Folder = self.env['documents.folder']
-        exclude_folder = self._get_folder_by_xmlid ( self.XMLID_EXCLUDE_FOLDER )
-        raw_name = self._extract_raw_name ( so )
-        if not raw_name :
-            return Folder.browse ()
+        pm = so.project_manager_id
+        if not pm:
+            raise UserError(_("Debes indicar un 'Project Manager' en el pedido para poder crear las solicitudes."))
 
-        domain_base = [('name', 'ilike', raw_name)]
-        if exclude_folder :
-            domain_base.append ( ('parent_folder_id', '!=', exclude_folder.id) )
+        # Admite distintos tipos de campo (res.users u otros con user_id)
+        if pm._name == 'res.users':
+            return pm.id
+        if hasattr(pm, 'user_id') and pm.user_id:
+            return pm.user_id.id
 
-        candidates = Folder.search ( domain_base )
-        if candidates :
-            names = [f.name for f in candidates]
-            base_order = min ( names, key=len ) if names else raw_name
-            domain_final = [('name', 'ilike', base_order + '%')]
-            if exclude_folder :
-                domain_final.append ( ('parent_folder_id', '!=', exclude_folder.id) )
-            return Folder.search ( domain_final, limit=1 )
-        return Folder.browse ()
+        raise UserError(_("El campo 'project_manager_id' debe referenciar a un usuario válido."))
 
-    # -------------------------------------------------------------------------
-    # Abrir carpeta de dossier (y marcar tiene_dossier)
-    # -------------------------------------------------------------------------
-    def action_open_dossier_folder(self) :
-        self.ensure_one ()
-        so = self
+    def _schedule_activity_for_record(self, record, user_id, summary, deadline_date):
+        """
+        Programa una actividad (To Do) sobre 'record' con vencimiento 'deadline_date'.
+        Si el modelo no soporta activity_schedule, cae a mail.activity.create.
+        """
+        Activity = self.env['mail.activity']
+        todo_type = self.env.ref('mail.mail_activity_data_todo', raise_if_not_found=False)
 
-        folder = self._find_existing_folder_for ( so )
-        SaleOrder = self.env['sale.order']
+        # Si el record soporta activity_schedule (mixin mail.thread)
+        if hasattr(record, 'activity_schedule'):
+            try:
+                record.activity_schedule(
+                    activity_type_id=todo_type.id if todo_type else False,
+                    date_deadline=deadline_date,
+                    user_id=user_id,
+                    summary=summary,
+                )
+                return
+            except Exception as e:
+                _logger.warning("Fallo activity_schedule en %s id=%s: %s", record._name, record.id, e)
 
-        if folder :
-            sale_orders = SaleOrder.search ( [('quotations_id.name', '=', so.quotations_id.name)] )
-            sale_orders.write ( {'tiene_dossier' : True} )
-
-            return {
-                'name' : _ ( 'Document Folder' ),
-                'type' : 'ir.actions.act_window',
-                'res_model' : 'documents.document',
-                'view_mode' : 'tree,kanban,form',
-                'context' : {
-                    'searchpanel_default_folder_id' : folder.id,
-                    'searchpanel_default_folder_id_domain' : [('folder_id', '=', folder.id)],
-                    'group_by' : 'folder_id',
-                    'search_default_folder_id' : folder.id,
-                    'default_folder_id' : folder.id,
-                },
-                'target' : 'current',
-            }
-        else :
-            sale_orders = SaleOrder.search ( [('quotations_id.name', '=', so.quotations_id.name)] )
-            sale_orders.write ( {'tiene_dossier' : False} )
-            return {
-                'type' : 'ir.actions.client',
-                'tag' : 'display_notification',
-                'params' : {
-                    'title' : _ ( 'Sin carpeta' ),
-                    'message' : _ ( 'No se encontró carpeta para el dossier de %s' ) % (
-                                so.quotations_id.name or so.name),
-                    'type' : 'warning',
-                    'sticky' : False,
-                }
-            }
+        # Fallback a mail.activity.create
+        try:
+            model = record._name
+            model_id = self.env['ir.model']._get(model).id
+            Activity.create({
+                'activity_type_id': todo_type.id if todo_type else False,
+                'res_model_id': model_id,
+                'res_id': record.id,
+                'date_deadline': deadline_date,
+                'user_id': user_id,
+                'summary': summary,
+                'note': '',
+            })
+        except Exception as e:
+            _logger.warning("No se pudo crear mail.activity para %s id=%s: %s", record._name, record.id, e)
 
     # -------------------------------------------------------------------------
     # Crear dossier + estructura + facetas + solicitudes (bajo el AÑO actual)
     # -------------------------------------------------------------------------
-    def action_create_dossier_folders(self) :
-        self.ensure_one ()
+    def action_create_dossier_folders(self):
+        self.ensure_one()
         so = self
 
         Folder = self.env['documents.folder']
-        Request = self.env['documents.request_wizard']  # ajusta si tu modelo difiere
+        Request = self.env['documents.request_wizard']  # si tu modelo difiere, ajusta aquí
 
         # Fuente de facetas: workspace raíz
-        parent_facets_src = self._get_folder_by_xmlid ( self.XMLID_FACETS_SOURCE_FOLDER )
+        parent_facets_src = self._get_folder_by_xmlid(self.XMLID_FACETS_SOURCE_FOLDER)
         # Padre donde crear: carpeta del año actual (sid_folder_YYYY)
-        target_parent = self._get_current_year_folder ()
+        target_parent = self._get_current_year_folder()
 
-        # Usuario (único) desde el grupo
-        owner_id = self._get_request_owner_id_from_group ()
+        # Usuario (único) desde el grupo (Calidad)
+        owner_id = self._get_request_owner_id_from_group()
+        # Project Manager (obligatorio para KOM/Contrato)
+        pm_user_id = self._get_pm_user_id_required(so)
 
-        order_code = (so.quotations_id and so.quotations_id.name) or so.name or _ ( 'Dossier' )
-        confirmed_orders = self.env['sale.order'].search ( [
+        order_code = (so.quotations_id and so.quotations_id.name) or so.name or _('Dossier')
+        confirmed_orders = self.env['sale.order'].search([
             ('state', '=', 'sale'),
             ('quotations_id', '=', so.quotations_id.id),
-        ] )
+        ])
 
         # ¿ya existe?
-        existing_folder = self._find_existing_folder_for ( so )
-        if existing_folder :
-            confirmed_orders.write ( {'tiene_dossier' : True} )
-            orders_str = ', '.join ( confirmed_orders.mapped ( 'name' ) ) or _ ( '(ninguno)' )
+        existing_folder = self._find_existing_folder_for(so)
+        if existing_folder:
+            confirmed_orders.write({'tiene_dossier': True})
+            orders_str = ', '.join(confirmed_orders.mapped('name')) or _('(ninguno)')
             return {
-                'type' : 'ir.actions.client',
-                'tag' : 'display_notification',
-                'params' : {
-                    'title' : _ ( 'Carpeta existente detectada' ),
-                    'message' : _ ( 'Ya existe un dossier para el contrato principal. '
-                                    'Se marcaron como "Dossier" los siguientes presupuestos: %s' ) % orders_str,
-                    'type' : 'warning',
-                    'sticky' : True,
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Carpeta existente detectada'),
+                    'message': _('Ya existe un dossier para el contrato principal. '
+                                 'Se marcaron como "Dossier" los siguientes presupuestos: %s') % orders_str,
+                    'type': 'warning',
+                    'sticky': True,
                 }
             }
 
         # Crear carpeta principal bajo la carpeta del año
-        workspace_parent = Folder.create ( {
-            'name' : order_code,
-            'parent_folder_id' : target_parent.id,
-        } )
+        workspace_parent = Folder.create({
+            'name': order_code,
+            'parent_folder_id': target_parent.id,
+        })
 
         # Facetas parecidas (si el workspace raíz tiene facetas “plantilla”)
         child_folders = [
@@ -224,75 +126,140 @@ class SaleOrder ( models.Model ) :
             '10.a Certificados', '10.b Marcado CE/UKCA', '10.c Conformidad', '11. Logística',
             '12. Dossier Final', '13. Contrato', '14. KOM',
         ]
-        if parent_facets_src :
-            similar_facets_parent = parent_facets_src.facet_ids.filtered (
-                lambda f : self._is_similar ( f.name, child_folders )
-            )
-            if similar_facets_parent :
-                workspace_parent.write ( {'facet_ids' : [(4, facet.id) for facet in similar_facets_parent]} )
-
-        # Marcar pedidos confirmados
-        confirmed_orders.write ( {'tiene_dossier' : True} )
-
         estados = ['Proveedor', 'Enviado', 'Comentarios', 'Rechazado', 'Aprobado']
         folders_sin_estado = ['0. Plantillas', '6.b Notificaciones', '6.b Autorizaciones de Envío', '11. Logística',
                               '13. Contrato', '14. KOM']
-        notificaciones = ['6.b Notificaciones']
-        adenda = ['Adendas']
-        noi = ['NOI-1', 'NOI-2', 'NOI-3', 'NOI-4', 'NOI-5', 'NOI-6', 'NOI-7', 'NOI-8', 'NOI-9', 'NOI-10']
-        contrato = ['13. Contrato']
+
+        # Mapa para localizar carpetas de interés tras crearlas
+        folder_map = {}
+        # Guardaremos la subcarpeta "Enviado" dentro de "1. Lista de documentos"
+        lista_docs_enviado = False
+
+        if parent_facets_src:
+            similar_facets_parent = parent_facets_src.facet_ids.filtered(
+                lambda f: self._is_similar(f.name, child_folders)
+            )
+            if similar_facets_parent:
+                workspace_parent.write({'facet_ids': [(4, facet.id) for facet in similar_facets_parent]})
+
+        # Marcar pedidos confirmados
+        confirmed_orders.write({'tiene_dossier': True})
 
         seq_child = 10
 
-        for fname in child_folders :
-            child = Folder.create ( {
-                'name' : fname,
-                'parent_folder_id' : workspace_parent.id,
-                'sequence' : seq_child,
-            } )
+        for fname in child_folders:
+            child = Folder.create({
+                'name': fname,
+                'parent_folder_id': workspace_parent.id,
+                'sequence': seq_child,
+            })
+            folder_map[fname] = child
 
-            if fname not in folders_sin_estado :
+            if fname not in folders_sin_estado:
                 seq_state = 10
-                for est in estados :
-                    Folder.create ( {'name' : est, 'parent_folder_id' : child.id, 'sequence' : seq_state} )
+                for est in estados:
+                    state_folder = Folder.create({'name': est, 'parent_folder_id': child.id, 'sequence': seq_state})
                     seq_state += 1
+                    # Detectar "Enviado" bajo "1. Lista de documentos"
+                    if fname == '1. Lista de documentos' and est == 'Enviado':
+                        lista_docs_enviado = state_folder
 
-            if fname in notificaciones :
-                seq_noi = 10
-                for n in noi :
-                    Folder.create ( {'name' : n, 'parent_folder_id' : child.id, 'sequence' : seq_noi} )
-                    seq_noi += 1
-
-            if fname in contrato :
-                for a in adenda :
-                    Folder.create ( {'name' : a, 'parent_folder_id' : child.id} )
-
-            if parent_facets_src :
-                similar_facets_child = parent_facets_src.facet_ids.filtered (
-                    lambda f, n=fname : self._is_similar ( f.name, [n] )
+            if parent_facets_src:
+                similar_facets_child = parent_facets_src.facet_ids.filtered(
+                    lambda f, n=fname: self._is_similar(f.name, [n])
                 )
-                if similar_facets_child :
-                    child.write ( {'facet_ids' : [(4, facet.id) for facet in similar_facets_child]} )
+                if similar_facets_child:
+                    child.write({'facet_ids': [(4, facet.id) for facet in similar_facets_child]})
 
-            # Solicitud de documentos asociada
-            try :
-                Request.create ( {
-                    'name' : _ ( "Solicitud para %s / %s" ) % (workspace_parent.name, child.name),
-                    'folder_id' : child.id,
-                    'owner_id' : owner_id,
-                } )
-            except Exception as e :
-                _logger.warning ( "No se pudo crear documents.request_wizard: %s", e )
-
+            # ⚠️ IMPORTANTE: YA NO creamos solicitudes genéricas aquí
+            # (antes: Request.create(...) por cada subcarpeta)
             seq_child += 1
 
+        # ---------------------------------------------------------------------
+        # Crear SOLO las 4 solicitudes requeridas (vencimiento a 10 días)
+        # ---------------------------------------------------------------------
+        deadline = fields.Date.context_today(self) + timedelta(days=10)
+
+        # Verificaciones de existencia de carpetas objetivo
+        if not lista_docs_enviado:
+            raise UserError(_("No se encontró la carpeta 'Enviado' dentro de '1. Lista de documentos'."))
+
+        itp_folder = folder_map.get('6.a ITP')
+        if not itp_folder:
+            raise UserError(_("No se encontró la carpeta '6.a ITP'."))
+
+        kom_folder = folder_map.get('14. KOM')
+        if not kom_folder:
+            raise UserError(_("No se encontró la carpeta '14. KOM'."))
+
+        contrato_folder = folder_map.get('13. Contrato')
+        if not contrato_folder:
+            raise UserError(_("No se encontró la carpeta '13. Contrato'."))
+
+        # Preparar valores base para Request (si el modelo soporta fecha límite, se rellena)
+        req_base = {
+            'owner_id': owner_id,
+        }
+        if 'date_deadline' in Request._fields:
+            req_base['date_deadline'] = deadline
+
+        # 1) Lista de documentos / Enviado  -> actividad para Calidad (owner_id)
+        req_ld = Request.create({
+            **req_base,
+            'name': _("Solicitud para %s / %s") % (workspace_parent.name, _("1. Lista de documentos / Enviado")),
+            'folder_id': lista_docs_enviado.id,
+        })
+        self._schedule_activity_for_record(
+            req_ld, owner_id, summary=_("Enviar documentación: Lista de documentos (Enviado)"), deadline_date=deadline
+        )
+
+        # 2) ITP -> actividad para Calidad (owner_id)
+        req_itp = Request.create({
+            **req_base,
+            'name': _("Solicitud para %s / %s") % (workspace_parent.name, _("6.a ITP")),
+            'folder_id': itp_folder.id,
+        })
+        self._schedule_activity_for_record(
+            req_itp, owner_id, summary=_("Enviar documentación: ITP"), deadline_date=deadline
+        )
+
+        # 3) KOM -> actividad para Project Manager
+        req_kom = Request.create({
+            **req_base,
+            'name': _("Solicitud para %s / %s") % (workspace_parent.name, _("14. KOM")),
+            'folder_id': kom_folder.id,
+        })
+        self._schedule_activity_for_record(
+            req_kom, pm_user_id, summary=_("Preparar/adjuntar documentación KOM"), deadline_date=deadline
+        )
+
+        # 4) Contrato -> actividad para Project Manager
+        req_contrato = Request.create({
+            **req_base,
+            'name': _("Solicitud para %s / %s") % (workspace_parent.name, _("13. Contrato")),
+            'folder_id': contrato_folder.id,
+        })
+        self._schedule_activity_for_record(
+            req_contrato, pm_user_id, summary=_("Contratos / Adendas: documentación requerida"), deadline_date=deadline
+        )
+
         return {
-            'type' : 'ir.actions.client',
-            'tag' : 'display_notification',
-            'params' : {
-                'title' : _ ( 'Dossier creado' ),
-                'message' : _ ( 'Se creó el dossier "%s" con su estructura de carpetas.' ) % workspace_parent.name,
-                'type' : 'success',
-                'sticky' : False,
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Dossier creado'),
+                'message': _('Se creó el dossier "%s", la estructura de carpetas y 4 solicitudes a 10 días vista.') % workspace_parent.name,
+                'type': 'success',
+                'sticky': False,
             }
         }
+```
+
+### Notas rápidas
+
+* He mantenido **owner\_id** de todas las solicitudes en el usuario de **Calidad** (consistente con tu lógica actual). Lo que cambia es **quién recibe la activity**: Calidad para *Lista de documentos* e *ITP*; **PM** para *KOM* y *Contrato*.
+* Si tu modelo de solicitud **sí** tiene un campo de fecha (p. ej. `date_deadline`), se rellena automáticamente (se comprueba con `if 'date_deadline' in Request._fields`).
+* He eliminado la creación masiva de solicitudes dentro del bucle de subcarpetas (dejé un comentario de “⚠️ IMPORTANTE”) para que **solo** existan las 4 solicitadas.
+* Si en tu base el estado se llama **“Enviados”** (plural), cambia la cadena `'Enviado'` por `'Enviados'` en el array `estados` y en la comprobación.
+
+¿Quieres que además cambie el **propietario** (`owner_id`) de las solicitudes de *KOM* y *Contrato* al PM (no solo la activity)? Puedo ajustarlo en una línea.
