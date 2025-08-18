@@ -3,11 +3,11 @@
         <!--SALE ORDER - ORDERS 	model="ir.ui.view" 	sale.view_order_tree-->
 
         <record id="sid_projects_dossier_sales_tree" model="ir.ui.view">
-            <field name="name">sid.projects.dossier.sales.tree</field>
+            <field name="name">sale.order.sid_tree</field>
             <field name="model">sale.order</field>
             <field name="priority" eval="16"/>
             <field name="arch" type="xml">
-                <tree string="Contratos con Dossier" class="o_sale_order" sample="1" decoration-muted="state == 'cancel'">
+                <tree class="o_sale_order_sid" string="Contratos con Dossier" sample="1" decoration-muted="state == 'cancel'">
                     <field name="message_needaction" invisible="1"/>
                     <field name="tiene_dossier" optional="hide" readonly='1'/>
                     <field name="name" string="Number" readonly="1" decoration-bf="1"/>
