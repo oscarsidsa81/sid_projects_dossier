@@ -253,13 +253,3 @@ class SaleOrder(models.Model):
                 'sticky': False,
             }
         }
-```
-
-### Notas rápidas
-
-* He mantenido **owner\_id** de todas las solicitudes en el usuario de **Calidad** (consistente con tu lógica actual). Lo que cambia es **quién recibe la activity**: Calidad para *Lista de documentos* e *ITP*; **PM** para *KOM* y *Contrato*.
-* Si tu modelo de solicitud **sí** tiene un campo de fecha (p. ej. `date_deadline`), se rellena automáticamente (se comprueba con `if 'date_deadline' in Request._fields`).
-* He eliminado la creación masiva de solicitudes dentro del bucle de subcarpetas (dejé un comentario de “⚠️ IMPORTANTE”) para que **solo** existan las 4 solicitadas.
-* Si en tu base el estado se llama **“Enviados”** (plural), cambia la cadena `'Enviado'` por `'Enviados'` en el array `estados` y en la comprobación.
-
-¿Quieres que además cambie el **propietario** (`owner_id`) de las solicitudes de *KOM* y *Contrato* al PM (no solo la activity)? Puedo ajustarlo en una línea.
