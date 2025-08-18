@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from odoo import api, models, fields, _
 from odoo.exceptions import UserError
+from difflib import SequenceMatcher
+from odoo import api
 import re
 import logging
 
@@ -26,26 +28,69 @@ class SaleOrder ( models.Model ) :
     # -------------------------------------------------------------------------
     # Utilidades
     # -------------------------------------------------------------------------
-    @api.model
-    def _clean_for_similarity(self, name) :
-        if not name :
-            return ''
-        name = name.lower ()
-        name = re.sub ( r"[,\.;:\?\!@#\$%\^&\*\(\)_\-\+=<>/\\\|\[\]\{\}\s]+", "", name )
-        return name
 
-    @api.model
-    def _is_similar(self, name, targets) :
-        base = self._clean_for_similarity ( name )
-        for t in targets or [] :
-            if self._clean_for_similarity ( t ) in base :
-                return True
-        return False
+    SEP = re.compile ( r'[^A-Za-z0-9]+' )
 
-    @api.model
-    def _extract_raw_name(self, so) :
-        qname = (so.quotations_id and so.quotations_id.name or '').strip ()
-        return (qname.split ()[0] if qname else '').strip ()
+    class YourModel ( models.Model ) :
+        _name = '...'
+
+        @api.model
+        def _clean_for_similarity(self, name) :
+            if not name :
+                return ''
+            name = name.lower ()
+            return re.sub ( r"[,\.;:\?\!@#\$%\^&\*\(\)_\-\+=<>/\\\|\[\]\{\}\s]+", "", name )
+
+        @api.model
+        def _parts(self, s) :
+            """Divide el código en segmentos alfanuméricos conservando su orden."""
+            return [p for p in SEP.split ( (s or '').strip ().upper () ) if p]
+
+        @api.model
+        def _family(self, s, n=2) :
+            """Devuelve la 'familia' (primeros n segmentos): p.ej. KLV-682."""
+            ps = self._parts ( s )
+            return '-'.join ( ps[:n] ) if ps else ''
+
+        @api.model
+        def _is_similar(self, name, targets, fuzzy_threshold=0.86) :
+            # 1) Tu regla actual: contención ignorando separadores
+            base_clean = self._clean_for_similarity ( name )
+            for t in targets or [] :
+                if self._clean_for_similarity ( t ) in base_clean or base_clean in self._clean_for_similarity ( t ) :
+                    return True
+
+            # 2) Fallback por familia (KLV-682-xx)
+            base_family = self._family ( name )
+            if base_family :
+                for t in targets or [] :
+                    if base_family == self._family ( t ) :
+                        return True
+
+            # 3) Bucle de truncado progresivo por la derecha (KLV-682-03 -> KLV-682 -> KLV)
+            bparts = self._parts ( name )
+            for k in range ( len ( bparts ) - 1, 1, -1 ) :
+                pref = '-'.join ( bparts[:k] )
+                for t in targets or [] :
+                    if pref == '-'.join ( self._parts ( t )[:k] ) :
+                        return True
+
+            # 4) Último recurso: similitud difusa
+            base_hyph = '-'.join ( bparts )
+            for t in targets or [] :
+                t_hyph = '-'.join ( self._parts ( t ) )
+                if SequenceMatcher ( None, base_hyph, t_hyph ).ratio () >= fuzzy_threshold :
+                    return True
+
+            return False
+
+        @api.model
+        def _extract_raw_name(self, so) :
+            qname = (so.quotations_id and so.quotations_id.name or '').strip ()
+            token = (qname.split ()[0] if qname else '').strip ()
+            # Opcional: devolver directamente la 'familia' para búsquedas más robustas
+            # return self._family(token) or token
+            return token
 
     def _get_folder_by_xmlid(self, xmlid) :
         rec = self.env.ref ( xmlid, raise_if_not_found=False )
