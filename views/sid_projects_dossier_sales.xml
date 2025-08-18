@@ -68,7 +68,17 @@
                 </xpath>
             </field>
         </record>
-
+        <record id="sid_projects_tiene_dossier" model="ir.ui.view">
+            <field name="name">sale.order.form</field>
+            <field name="model">sale.order</field>
+            <field name="priority" eval="3004"/>
+            <field name="inherit_id" ref="sale.view_order_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='quotations_id']" position="before">
+                    <field name="tiene_dossier" widget="boolean_toggle" String="Dossier"/>
+                </xpath>
+            </field>
+        </record>
 
     </data>
 </odoo>
