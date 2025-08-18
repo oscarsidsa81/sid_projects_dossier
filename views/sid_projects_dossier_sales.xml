@@ -6,8 +6,9 @@
             <field name="name">sale.order.sid_tree</field>
             <field name="model">sale.order</field>
             <field name="priority" eval="16"/>
+            <field name="mode">primary</field>
             <field name="arch" type="xml">
-                <tree class="o_sale_order_sid" string="Contratos con Dossier" sample="1" decoration-muted="state == 'cancel'">
+                <tree string="Contratos con Dossier" sample="1" decoration-muted="state == 'cancel'">
                     <field name="message_needaction" invisible="1"/>
                     <field name="tiene_dossier" optional="hide" readonly='1'/>
                     <field name="name" string="Number" readonly="1" decoration-bf="1"/>
