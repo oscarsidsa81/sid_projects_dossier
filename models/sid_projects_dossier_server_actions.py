@@ -20,7 +20,8 @@ class SaleOrder ( models.Model ) :
     XMLID_PATTERN_YEAR_FOLDER = 'sid_projects_dossier.sid_folder_%(year)s'
 
     # Grupo con exactamente 1 usuario (propietario de solicitudes)
-    XMLID_DOSSIER_OWNER_GROUP = 'sid_dossier_management.group_dossier_user'
+    XMLID_DOSSIER_OWNER_GROUP = 'sid_dossier_management.group_dossier_manager'
+    XMLID_DOSSIER_USER_GROUP = 'sid_dossier_management.group_dossier_user'
 
     # -------------------------------------------------------------------------
     # Utilidades
@@ -57,14 +58,28 @@ class SaleOrder ( models.Model ) :
                 "No se encuentra el grupo de administrador de dossieres (%s). "
                 "Carga el XML de seguridad."
             ) % self.XMLID_DOSSIER_OWNER_GROUP )
+
         users = group.users
-        if len ( users ) == 1 :
-            return users.id
         if len ( users ) == 0 :
-            raise UserError ( _ ( "El grupo '%s' no tiene usuarios. Asigna exactamente uno." )
-                              % (group.display_name or 'Administrador de Dossieres de calidad') )
-        raise UserError ( _ ( "El grupo '%s' tiene %s usuarios. Debe haber exactamente uno." )
-                          % (group.display_name or 'Administrador de Dossieres de calidad', len ( users )) )
+            raise UserError ( _ (
+                "El grupo '%s' no tiene usuarios. Asigna exactamente uno."
+            ) % (group.display_name or 'Administrador de Dossieres de calidad') )
+
+        if len ( users ) > 1 :
+            raise UserError ( _ (
+                "El grupo '%s' tiene %s usuarios. Debe haber exactamente uno."
+            ) % (group.display_name or 'Administrador de Dossieres de calidad', len ( users )) )
+
+        user = users[0]
+
+        # Buscar el empleado vinculado a este usuario
+        employee = self.env['hr.employee'].search ( [('user_id', '=', user.id)], limit=1 )
+        if not employee or not employee.department_id or employee.department_id.name != "Calidad" :
+            raise UserError ( _ (
+                "El usuario asignado al grupo '%s' debe pertenecer al departamento 'Calidad'."
+            ) % (group.display_name or 'Administrador de Dossieres de calidad') )
+
+        return user.id
 
     def _get_current_year_folder(self) :
         """Resuelve la carpeta del año en curso por xmlid sid_folder_YYYY."""

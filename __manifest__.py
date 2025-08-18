@@ -11,6 +11,7 @@
         'views/sid_projects_dossier_sales.xml',
         'data/document_actions.xml',
         'data/document_folders.xml',
+        'data/document_group.xml',
         'data/documents_tags.xml',
     ],
     'installable': True,
