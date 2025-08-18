@@ -142,7 +142,7 @@ class SaleOrder ( models.Model ) :
                 ('partner_id', '=', so.partner_id.id),
             ] )
             sale_orders.write ( {'tiene_dossier' : True} )
-            sale_orders.write ( {'dossier_asignado' : folder.dossier_contrato} )
+            sale_orders.write ( {'dossier_asignado' : folder.name} )
 
             return {
                 'name' : _ ( 'Document Folder' ),
