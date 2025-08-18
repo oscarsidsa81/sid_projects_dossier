@@ -7,7 +7,6 @@
             <field name="model">sale.order</field>
             <field name="priority" eval="1000"/>
             <field name="arch" type="xml">
-                <?xml version="1.0"?>
                 <tree string="Sales Orders" sample="1" decoration-info="invoice_status == 'to invoice'"
                       decoration-muted="state == 'cancel'">
                     <field name="message_needaction" invisible="1"/>
