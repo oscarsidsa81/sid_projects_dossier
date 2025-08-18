@@ -140,8 +140,38 @@ class SaleOrder(models.Model):
 
         return owners.id
 
+    def _get_root_workspace(self):
+        """Workspace raíz donde deben vivir todas las carpetas del dossier."""
+        root = self._get_folder_by_xmlid(self.XMLID_FACETS_SOURCE_FOLDER)
+        if not root:
+            raise UserError(_(
+                "No existe el workspace raíz de dossieres (%s). "
+                "Revisa datos iniciales o el XMLID_FACETS_SOURCE_FOLDER."
+            ) % self.XMLID_FACETS_SOURCE_FOLDER)
+        return root
+
+    def _scoped_domain(self, extra=None):
+        """
+        Devuelve un dominio que:
+          - limita a carpetas bajo el workspace raíz (child_of ROOT)
+          - excluye 'Archivado' y_todo su subárbol (NOT child_of EXCLUDE)
+          - añade condiciones extra (extra)
+        """
+        extra = list(extra or [])
+        root = self._get_root_workspace()
+        exclude = self._get_folder_by_xmlid(self.XMLID_EXCLUDE_FOLDER)
+
+        domain = [('id', 'child_of', root.id)]
+        if exclude:
+            # Negamos_todo el subárbol de Archivado
+            domain += ['!', ('id', 'child_of', exclude.id)]
+
+        # AND implícito con 'extra'
+        return domain + extra
+
+
     def _get_current_year_folder(self):
-        """Resuelve la carpeta del año en curso por xmlid sid_folder_YYYY."""
+        """Resuelve la carpeta del año en curso y valida que cuelga del workspace raíz."""
         year = fields.Date.context_today(self).year
         xmlid = self.XMLID_PATTERN_YEAR_FOLDER % {'year': year}
         folder = self._get_folder_by_xmlid(xmlid)
@@ -150,52 +180,69 @@ class SaleOrder(models.Model):
                 "No existe la carpeta del año en curso (%s). "
                 "Asegúrate de tener datos iniciales con id externo '%s'."
             ) % (year, xmlid))
+
+        # Validar que la carpeta del año está bajo el workspace raíz
+        root = self._get_root_workspace()
+        Folder = self.env['documents.folder']
+        is_under_root = bool(Folder.search_count([
+            ('id', '=', folder.id),
+            ('id', 'child_of', root.id),
+        ]))
+        if not is_under_root:
+            raise UserError(_(
+                "La carpeta del año (%s) no cuelga del workspace raíz (%s). "
+                "Mueve la carpeta o corrige los XMLIDs."
+            ) % (folder.display_name, root.display_name))
         return folder
 
     @api.model
     def _find_existing_folder_for(self, so):
         """
-        Estrategia:
-          A) Buscar por 'familia' (p.ej. 'KLV-682%'), excluyendo 'Archivado'.
-          B) Truncado progresivo por la derecha (KLV-682-03 -> KLV-682 -> KLV).
-          C) Fallback a heurística original (ilike raw y luego base más corta + '%').
-        """
+          Estrategia con ámbito:
+            - Buscar SIEMPRE bajo XMLID_FACETS_SOURCE_FOLDER
+            - Excluir SIEMPRE XMLID_EXCLUDE_FOLDER (_todo su subárbol)
+            - A) Buscar por 'familia' (p.ej. 'KLV-682%')
+            - B) Truncado progresivo por la derecha
+            - C) Fallback heurístico original (ilike raw y luego base corta + '%')
+          """
         Folder = self.env['documents.folder']
-        exclude_folder = self._get_folder_by_xmlid(self.XMLID_EXCLUDE_FOLDER)
-        raw_name = self._extract_raw_name(so)
-        if not raw_name:
-            return Folder.browse()
+        raw_name = self._extract_raw_name ( so )
+        if not raw_name :
+            return Folder.browse ()
 
-        def _domain_excluding_archived(extra):
-            dom = list(extra)
-            if exclude_folder:
-                dom.append(('parent_folder_id', '!=', exclude_folder.id))
-            return dom
+        # Helpers de parsing (si ya los tienes, usa los tuyos)
+        SEP = re.compile ( r'[^A-Za-z0-9]+' )
+
+        def _parts(s) :
+            return [p for p in SEP.split ( (s or '').strip ().upper () ) if p]
+
+        def _family(s, n=2) :
+            ps = _parts ( s )
+            return '-'.join ( ps[:n] ) if ps else ''
 
         # A) Familia
-        fam = self._family(raw_name)
-        if fam:
-            candidates = Folder.search(_domain_excluding_archived([('name', 'ilike', fam + '%')]), limit=1)
-            if candidates:
-                return candidates
+        fam = _family ( raw_name )
+        if fam :
+            res = Folder.search ( self._scoped_domain ( [('name', 'ilike', fam + '%')] ), limit=1 )
+            if res :
+                return res
 
         # B) Truncado progresivo
-        parts = self._parts(raw_name)
-        for k in range(len(parts) - 1, 1, -1):
-            pref = '-'.join(parts[:k])
-            res = Folder.search(_domain_excluding_archived([('name', 'ilike', pref + '%')]), limit=1)
-            if res:
+        parts = _parts ( raw_name )
+        for k in range ( len ( parts ) - 1, 1, -1 ) :
+            pref = '-'.join ( parts[:k] )
+            res = Folder.search ( self._scoped_domain ( [('name', 'ilike', pref + '%')] ), limit=1 )
+            if res :
                 return res
 
         # C) Heurística original
-        candidates = Folder.search(_domain_excluding_archived([('name', 'ilike', raw_name)]))
-        if candidates:
+        candidates = Folder.search ( self._scoped_domain ( [('name', 'ilike', raw_name)] ) )
+        if candidates :
             names = [f.name or '' for f in candidates]
-            base_order = min(names, key=len) if names else raw_name
-            return Folder.search(_domain_excluding_archived([('name', 'ilike', base_order + '%')]), limit=1)
+            base_order = min ( names, key=len ) if names else raw_name
+            return Folder.search ( self._scoped_domain ( [('name', 'ilike', base_order + '%')] ), limit=1 )
 
-        return Folder.browse()
-
+        return Folder.browse ()
     # -------------------------------------------------------------------------
     # Abrir carpeta de dossier (y marcar tiene_dossier)
     # -------------------------------------------------------------------------
