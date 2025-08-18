@@ -19,7 +19,7 @@
                             icon="fa-book"
                             class="oe_inline"
                             attrs="{'invisible': ['|',('state','!=','sale'),('tiene_dossier','!=',True)]}"
-                            groups="group_dossier_user,group_dossier_manager"
+                            groups="sid_projects_dossier.group_dossier_user,sid_projects_dossier.group_dossier_manager"
                     />
                 </xpath>
             </field>
