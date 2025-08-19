@@ -5,13 +5,13 @@ class SaleOrderDossier ( models.Model ) :
     _inherit = 'sale.order'
 
     dossier_asignado = fields.Char (
-        string="Dossier",
+        string="Dossier actual",
         store=True,
         help="Campo para definir la carpeta de Documentos"
     )
 
     tiene_dossier = fields.Boolean (
-        string="Tiene Dossier",
+        string="Dossier activo",
         help="	Campo para saber si se creó un dossier para este nº de contrato",
         store=True,
         readonly=True,
