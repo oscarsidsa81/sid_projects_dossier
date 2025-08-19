@@ -1,6 +1,6 @@
 <odoo>
 
-    <!-- ====== TREE INLINE PARA LOS CANDIDATOS ====== -->
+    <!-- TREE de candidatos -->
     <record id="view_dossier_assign_candidate_tree" model="ir.ui.view">
         <field name="name">dossier.assign.candidate.tree</field>
         <field name="model">dossier.assign.candidate</field>
@@ -14,7 +14,7 @@
         </field>
     </record>
 
-    <!-- ====== VISTA DEL WIZARD (con pestaña de Sugerencias) ====== -->
+    <!-- WIZARD -->
     <record id="view_dossier_assign_wizard_form" model="ir.ui.view">
         <field name="name">dossier.assign.wizard.form</field>
         <field name="model">dossier.assign.wizard</field>
@@ -27,11 +27,10 @@
                                 <field name="sale_order_id" readonly="1"/>
                                 <field name="mode" widget="radio"/>
 
+                                <!-- sin domain aquí; lo aplica el onchange en Python -->
                                 <field name="existing_folder_id"
                                        attrs="{'invisible':[('mode','!=','existing')], 'required':[('mode','=','existing')]}"
-                                       options="{'no_create': True}"
-                                       domain="[('id','child_of', context.get('root_folder_id')),
-                                '!', ('id','child_of', context.get('exclude_folder_id'))]"/>
+                                       options="{'no_create': True}"/>
 
                                 <field name="new_folder_name"
                                        attrs="{'invisible':[('mode','!=','new')], 'required':[('mode','=','new')]}"/>
@@ -40,8 +39,7 @@
 
                         <page string="Sugerencias">
                             <group>
-                                <field name="candidate_ids"
-                                       context="{'form_view_ref': 'sid_projects_dossier.view_dossier_assign_candidate_tree'}">
+                                <field name="candidate_ids">
                                     <tree string="Carpetas candidatas">
                                         <field name="folder_id"/>
                                         <field name="parent_folder_id"/>
@@ -62,7 +60,7 @@
         </field>
     </record>
 
-    <!-- ====== ACCIÓN DEL WIZARD ====== -->
+    <!-- ACCIÓN -->
     <record id="action_dossier_assign_wizard" model="ir.actions.act_window">
         <field name="name">Asignar carpeta de dossier</field>
         <field name="type">ir.actions.act_window</field>
@@ -70,16 +68,10 @@
         <field name="view_mode">form</field>
         <field name="view_id" ref="view_dossier_assign_wizard_form"/>
         <field name="target">new</field>
-        <!-- sin default_sale_order_id; lo aporta el botón -->
-        <field name="context">
-            {
-            'root_folder_id': %(sid_projects_dossier.sid_workspace_quality_dossiers)d,
-            'exclude_folder_id': %(sid_projects_dossier.sid_workspace_archived)d
-            }
-        </field>
+        <!-- no context -->
     </record>
 
-    <!-- ====== BOTÓN EN SALE.ORDER (header) ====== -->
+    <!-- BOTÓN EN SALE.ORDER (header) -->
     <record id="sale_order_form_inherit_dossier_button" model="ir.ui.view">
         <field name="name">sale.order.form.dossier.button</field>
         <field name="model">sale.order</field>
@@ -89,12 +81,7 @@
                 <button type="action"
                         name="%(action_dossier_assign_wizard)d"
                         string="Dossier"
-                        class="oe_highlight"
-                        context="{
-                'default_sale_order_id': id,
-                'root_folder_id': %(sid_projects_dossier.sid_workspace_quality_dossiers)d,
-                'exclude_folder_id': %(sid_projects_dossier.sid_workspace_archived)d
-              }"/>
+                        class="oe_highlight"/>
             </xpath>
         </field>
     </record>
