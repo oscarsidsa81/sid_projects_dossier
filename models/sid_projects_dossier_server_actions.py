@@ -3,11 +3,11 @@ from odoo import api, models, fields, _
 from odoo.exceptions import UserError
 import re
 import logging
-from difflib import SequenceMatcher  # <- stdlib, disponible en Odoo
+from difflib import SequenceMatcher  # stdlib
+from .sid_dossier_similarity import _scoped_domain, _candidate_basenames, _get_root_workspace
 
 _logger = logging.getLogger(__name__)
 
-# Separador para trocear códigos en partes alfanuméricas
 SEP = re.compile(r'[^A-Za-z0-9]+')
 
 
@@ -17,75 +17,61 @@ class SaleOrder(models.Model):
     # -------------------------------------------------------------------------
     # XMLIDs fijos
     # -------------------------------------------------------------------------
-    XMLID_FACETS_SOURCE_FOLDER = 'sid_projects_dossier.sid_workspace_quality_dossiers'  # workspace raíz (para facetas)
-    XMLID_EXCLUDE_FOLDER = 'sid_projects_dossier.sid_workspace_archived'  # workspace "Archivado"
-
-    # Patrón del xmlid para las carpetas de año: sid_folder_YYYY
+    XMLID_FACETS_SOURCE_FOLDER = 'sid_projects_dossier.sid_workspace_quality_dossiers'
+    XMLID_EXCLUDE_FOLDER = 'sid_projects_dossier.sid_workspace_archived'
     XMLID_PATTERN_YEAR_FOLDER = 'sid_projects_dossier.sid_folder_%(year)s'
-
-    # Grupo con exactamente 1 usuario (propietario de solicitudes)
     XMLID_DOSSIER_OWNER_GROUP = 'sid_projects_dossier.group_dossier_manager'
     XMLID_DOSSIER_USER_GROUP = 'sid_projects_dossier.group_dossier_user'
 
     # -------------------------------------------------------------------------
-    # Utilidades de similitud
+    # Helpers menores propios del modelo
     # -------------------------------------------------------------------------
+    def _get_folder_by_xmlid(self, xmlid):
+        rec = self.env.ref(xmlid, raise_if_not_found=False)
+        return rec or self.env['documents.folder'].browse()
+
+    # ------------------------------
+    # Similitud (para facetas)
+    # ------------------------------
     @api.model
     def _clean_for_similarity(self, name):
-        """Normaliza (minúsculas, sin separadores) para comprobaciones de contención."""
         if not name:
             return ''
         name = name.lower()
-        name = re.sub(r"[,\.;:\?\!@#\$%\^&\*\(\)_\-\+=<>/\\\|\[\]\{\}\s]+", "", name)
-        return name
+        return re.sub(r"[,\.;:\?\!@#\$%\^&\*\(\)_\-\+=<>/\\\|\[\]\{\}\s]+", "", name)
 
     @api.model
     def _parts(self, s):
-        """Divide un código en segmentos alfanuméricos (p.ej. 'KLV-682-03' -> ['KLV','682','03'])."""
         return [p for p in SEP.split((s or '').strip().upper()) if p]
 
     @api.model
     def _family(self, s, n=2):
-        """Devuelve la 'familia' del código (primeros n segmentos). 'KLV-682-03' -> 'KLV-682'."""
         ps = self._parts(s)
         return '-'.join(ps[:n]) if ps else ''
 
     @api.model
     def _is_similar(self, name, targets, fuzzy_threshold=0.86):
-        """
-        Comprueba similitud mediante:
-          1) Contención tras limpieza agresiva
-          2) Misma familia (primeras 2 partes)
-          3) Truncado progresivo por la derecha
-          4) Fuzzy ratio (SequenceMatcher) >= umbral
-        """
         base_clean = self._clean_for_similarity(name)
         bparts = self._parts(name)
         base_hyph = '-'.join(bparts)
         base_family = self._family(name)
 
-        # 1) Contención limpia (en ambos sentidos)
         for t in targets or []:
             tc = self._clean_for_similarity(t)
-            if not tc:
-                continue
-            if tc in base_clean or base_clean in tc:
+            if tc and (tc in base_clean or base_clean in tc):
                 return True
 
-        # 2) Misma familia (KLV-682-xx)
         if base_family:
             for t in targets or []:
                 if base_family == self._family(t):
                     return True
 
-        # 3) Truncado progresivo (KLV-682-03 -> KLV-682 -> KLV)
         for k in range(len(bparts) - 1, 1, -1):
             pref = '-'.join(bparts[:k])
             for t in targets or []:
                 if pref and pref == '-'.join(self._parts(t)[:k]):
                     return True
 
-        # 4) Fuzzy como último recurso
         for t in targets or []:
             t_hyph = '-'.join(self._parts(t))
             if base_hyph and t_hyph and SequenceMatcher(None, base_hyph, t_hyph).ratio() >= fuzzy_threshold:
@@ -98,151 +84,62 @@ class SaleOrder(models.Model):
         qname = (so.quotations_id and so.quotations_id.name or '').strip()
         return (qname.split()[0] if qname else '').strip()
 
-    # -------------------------------------------------------------------------
-    # Ayudas varias
-    # -------------------------------------------------------------------------
-    def _get_folder_by_xmlid(self, xmlid):
-        rec = self.env.ref(xmlid, raise_if_not_found=False)
-        return rec or self.env['documents.folder'].browse()
-
-    def _get_request_owner_id_from_group(self):
-        group = self.env.ref(self.XMLID_DOSSIER_OWNER_GROUP, raise_if_not_found=False)
-        if not group:
-            raise UserError(_(
-                "No se encuentra el grupo de administrador de dossieres (%s). "
-                "Carga el XML de seguridad."
-            ) % self.XMLID_DOSSIER_OWNER_GROUP)
-
-        users = group.users
-        if not users:
-            raise UserError(_(
-                "El grupo '%s' no tiene usuarios. Asigna al menos uno."
-            ) % (group.display_name or 'Administrador de Dossieres de calidad'))
-
-        # Filtrar SOLO los empleados cuyo departamento se llama EXACTAMENTE "Calidad"
-        emp_in_calidad = self.env['hr.employee'].search([
-            ('user_id', 'in', users.ids),
-            ('department_id.name', '=', 'Calidad'),
-        ])
-
-        owners = emp_in_calidad.mapped('user_id')
-
-        if len(owners) == 0:
-            raise UserError(_(
-                "En el grupo '%s' hay %s usuario(s), pero ninguno pertenece al departamento 'Calidad'."
-            ) % (group.display_name or 'Administrador de Dossieres de calidad', len(users)))
-
-        if len(owners) > 1:
-            nombres = ', '.join(owners.mapped('name'))
-            raise UserError(_(
-                "En el grupo '%s' hay %s usuarios en el departamento 'Calidad'. Debe haber exactamente uno: %s"
-            ) % (group.display_name or 'Administrador de Dossieres de calidad', len(owners), nombres))
-
-        return owners.id
-
-    def _get_root_workspace(self):
-        """Workspace raíz donde deben vivir todas las carpetas del dossier."""
-        root = self._get_folder_by_xmlid(self.XMLID_FACETS_SOURCE_FOLDER)
-        if not root:
-            raise UserError(_(
-                "No existe el workspace raíz de dossieres (%s). "
-                "Revisa datos iniciales o el XMLID_FACETS_SOURCE_FOLDER."
-            ) % self.XMLID_FACETS_SOURCE_FOLDER)
-        return root
-
-    def _scoped_domain(self, extra=None):
-        """
-        Devuelve un dominio que:
-          - limita a carpetas bajo el workspace raíz (child_of ROOT)
-          - excluye 'Archivado' y_todo su subárbol (NOT child_of EXCLUDE)
-          - añade condiciones extra (extra)
-        """
-        extra = list(extra or [])
-        root = self._get_root_workspace()
-        exclude = self._get_folder_by_xmlid(self.XMLID_EXCLUDE_FOLDER)
-
-        domain = [('id', 'child_of', root.id)]
-        if exclude:
-            # Negamos_todo el subárbol de Archivado
-            domain += ['!', ('id', 'child_of', exclude.id)]
-
-        # AND implícito con 'extra'
-        return domain + extra
-
-
+    # ------------------------------
+    # Carpeta del año (validada bajo ROOT)
+    # ------------------------------
     def _get_current_year_folder(self):
         """Resuelve la carpeta del año en curso y valida que cuelga del workspace raíz."""
         year = fields.Date.context_today(self).year
         xmlid = self.XMLID_PATTERN_YEAR_FOLDER % {'year': year}
         folder = self._get_folder_by_xmlid(xmlid)
         if not folder:
-            raise UserError(_(
-                "No existe la carpeta del año en curso (%s). "
-                "Asegúrate de tener datos iniciales con id externo '%s'."
-            ) % (year, xmlid))
+            raise UserError(_("No existe la carpeta del año en curso (%s). "
+                              "Asegúrate de tener datos iniciales con id externo '%s'.") % (year, xmlid))
 
         # Validar que la carpeta del año está bajo el workspace raíz
-        root = self._get_root_workspace()
+        root = _get_root_workspace(self)
         Folder = self.env['documents.folder']
         is_under_root = bool(Folder.search_count([
             ('id', '=', folder.id),
             ('id', 'child_of', root.id),
         ]))
         if not is_under_root:
-            raise UserError(_(
-                "La carpeta del año (%s) no cuelga del workspace raíz (%s). "
-                "Mueve la carpeta o corrige los XMLIDs."
-            ) % (folder.display_name, root.display_name))
+            raise UserError(_("La carpeta del año (%s) no cuelga del workspace raíz (%s). "
+                              "Mueve la carpeta o corrige los XMLIDs.") % (folder.display_name, root.display_name))
         return folder
 
+    # ------------------------------
+    # Búsqueda de carpeta existente (ámbito aplicado)
+    # ------------------------------
     @api.model
     def _find_existing_folder_for(self, so):
         """
-          Estrategia con ámbito:
-            - Buscar SIEMPRE bajo XMLID_FACETS_SOURCE_FOLDER
-            - Excluir SIEMPRE XMLID_EXCLUDE_FOLDER (_todo su subárbol)
-            - A) Buscar por 'familia' (p.ej. 'KLV-682%')
-            - B) Truncado progresivo por la derecha
-            - C) Fallback heurístico original (ilike raw y luego base corta + '%')
-          """
+        Estrategia:
+          A) Buscar por candidatos deterministas ('…-TIPO-digits[letter]%') bajo ROOT y excluyendo Archivado.
+          B) Fallback heurístico (raw ilike y base corta + '%') bajo el mismo ámbito.
+        """
         Folder = self.env['documents.folder']
-        raw_name = self._extract_raw_name ( so )
-        if not raw_name :
-            return Folder.browse ()
+        raw = self._extract_raw_name(so)
+        if not raw:
+            return Folder.browse()
 
-        # Helpers de parsing (si ya los tienes, usa los tuyos)
-        SEP = re.compile ( r'[^A-Za-z0-9]+' )
-
-        def _parts(s) :
-            return [p for p in SEP.split ( (s or '').strip ().upper () ) if p]
-
-        def _family(s, n=2) :
-            ps = _parts ( s )
-            return '-'.join ( ps[:n] ) if ps else ''
-
-        # A) Familia
-        fam = _family ( raw_name )
-        if fam :
-            res = Folder.search ( self._scoped_domain ( [('name', 'ilike', fam + '%')] ), limit=1 )
-            if res :
+        # A) Candidatos (no mezcla CON/VAO)
+        for base in _candidate_basenames(self, raw):
+            res = Folder.search(_scoped_domain(self, [('name', 'ilike', base + '%')]), limit=1)
+            if res:
                 return res
 
-        # B) Truncado progresivo
-        parts = _parts ( raw_name )
-        for k in range ( len ( parts ) - 1, 1, -1 ) :
-            pref = '-'.join ( parts[:k] )
-            res = Folder.search ( self._scoped_domain ( [('name', 'ilike', pref + '%')] ), limit=1 )
-            if res :
-                return res
-
-        # C) Heurística original
-        candidates = Folder.search ( self._scoped_domain ( [('name', 'ilike', raw_name)] ) )
-        if candidates :
+        # B) Heurística original dentro del ámbito
+        candidates = Folder.search(_scoped_domain(self, [('name', 'ilike', raw)]))
+        if candidates:
             names = [f.name or '' for f in candidates]
-            base_order = min ( names, key=len ) if names else raw_name
-            return Folder.search ( self._scoped_domain ( [('name', 'ilike', base_order + '%')] ), limit=1 )
+            base_order = min(names, key=len) if names else raw
+            res = Folder.search(_scoped_domain(self, [('name', 'ilike', base_order + '%')]), limit=1)
+            if res:
+                return res
 
-        return Folder.browse ()
+        return Folder.browse()
+
     # -------------------------------------------------------------------------
     # Abrir carpeta de dossier (y marcar tiene_dossier)
     # -------------------------------------------------------------------------
@@ -285,8 +182,7 @@ class SaleOrder(models.Model):
                 'tag': 'display_notification',
                 'params': {
                     'title': _('Sin carpeta'),
-                    'message': _('No se encontró carpeta para el dossier de %s') % (
-                        so.quotations_id.name or so.name),
+                    'message': _('No se encontró carpeta para el dossier de %s') % (so.quotations_id.name or so.name),
                     'type': 'warning',
                     'sticky': False,
                 }

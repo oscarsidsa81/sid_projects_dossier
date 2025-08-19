@@ -1,0 +1,69 @@
+<odoo>
+
+  <!-- ========== VISTA DEL WIZARD ========== -->
+  <record id="view_dossier_assign_wizard_form" model="ir.ui.view">
+    <field name="name">dossier.assign.wizard.form</field>
+    <field name="model">dossier.assign.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Asignar carpeta de dossier">
+        <group>
+          <field name="sale_order_id" readonly="1"/>
+          <field name="mode" widget="radio"/>
+
+          <!-- Selector limitado al workspace raíz y excluyendo Archivado -->
+          <field name="existing_folder_id"
+                 attrs="{'invisible':[('mode','!=','existing')], 'required':[('mode','=','existing')]}"
+                 options="{'no_create': True}"
+                 domain="[('id','child_of', context.get('root_folder_id')),
+                          '!', ('id','child_of', context.get('exclude_folder_id'))]"/>
+
+          <field name="new_folder_name"
+                 attrs="{'invisible':[('mode','!=','new')], 'required':[('mode','=','new')]}"/>
+        </group>
+        <footer>
+          <button string="Confirmar" type="object" name="action_confirm" class="btn-primary"/>
+          <button string="Cancelar" special="cancel" class="btn-secondary"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <!-- ========== ACCIÓN DEL WIZARD ========== -->
+  <record id="action_dossier_assign_wizard" model="ir.actions.act_window">
+    <field name="name">Asignar carpeta de dossier</field>
+    <field name="type">ir.actions.act_window</field>
+    <field name="res_model">dossier.assign.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_dossier_assign_wizard_form"/>
+    <field name="target">new</field>
+    <!-- Contexto: pasamos el sale.order activo y los IDs raíz/excluido para el domain -->
+    <field name="context">
+      {
+        'default_sale_order_id': active_id,
+        'root_folder_id': ref('sid_projects_dossier.sid_workspace_quality_dossiers'),
+        'exclude_folder_id': ref('sid_projects_dossier.sid_workspace_archived')
+      }
+    </field>
+  </record>
+
+  <!-- ========== BOTÓN EN SALE.ORDER ========== -->
+  <record id="sale_order_form_inherit_dossier_button" model="ir.ui.view">
+    <field name="name">sale.order.form.dossier.button</field>
+    <field name="model">sale.order</field>
+    <field name="inherit_id" ref="sale.view_order_form"/>
+    <field name="arch" type="xml">
+      <xpath expr="//header" position="inside">
+        <button type="action"
+                name="%(action_dossier_assign_wizard)d"
+                string="Dossier"
+                class="oe_highlight"
+                context="{
+                  'default_sale_order_id': active_id,
+                  'root_folder_id': ref('sid_projects_dossier.sid_workspace_quality_dossiers'),
+                  'exclude_folder_id': ref('sid_projects_dossier.sid_workspace_archived')
+                }"/>
+      </xpath>
+    </field>
+  </record>
+
+</odoo>
