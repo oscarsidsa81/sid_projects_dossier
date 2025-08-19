@@ -1,2 +1,3 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_nombre_modelo,access.nombre.modelo,model_mi_modulo_nombre_modelo,base.group_user,1,1,1,1
+sid_projects_dossier.access_dossier_assign_candidate,access_dossier_assign_candidate,sid_projects_dossier.model_dossier_assign_candidate,base.group_user,1,0,0,0
+sid_projects_dossier.access_dossier_assign_wizard,access_dossier_assign_wizard,sid_projects_dossier.model_dossier_assign_wizard,base.group_user,1,0,0,0
