@@ -70,9 +70,9 @@
         <field name="view_mode">form</field>
         <field name="view_id" ref="view_dossier_assign_wizard_form"/>
         <field name="target">new</field>
+        <!-- sin default_sale_order_id; lo aporta el botón -->
         <field name="context">
             {
-            'default_sale_order_id': active_id,
             'root_folder_id': %(sid_projects_dossier.sid_workspace_quality_dossiers)d,
             'exclude_folder_id': %(sid_projects_dossier.sid_workspace_archived)d
             }
@@ -91,10 +91,10 @@
                         string="Dossier"
                         class="oe_highlight"
                         context="{
-                  'default_sale_order_id': active_id,
-                  'root_folder_id': %(sid_projects_dossier.sid_workspace_quality_dossiers)d,
-                  'exclude_folder_id': %(sid_projects_dossier.sid_workspace_archived)d
-                }"/>
+                'default_sale_order_id': id,
+                'root_folder_id': %(sid_projects_dossier.sid_workspace_quality_dossiers)d,
+                'exclude_folder_id': %(sid_projects_dossier.sid_workspace_archived)d
+              }"/>
             </xpath>
         </field>
     </record>
