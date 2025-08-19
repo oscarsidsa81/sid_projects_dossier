@@ -79,9 +79,9 @@
         <field name="arch" type="xml">
             <xpath expr="//header" position="inside">
                 <button type="object"
-                        name="%(action_dossier_assign_wizard)d"
+                        name="action_open_dossier_assign_wizard"
                         string="Dossier"
-                        class="oe_highlight"
+                        class="oe_highlight"/>
             </xpath>
         </field>
     </record>
