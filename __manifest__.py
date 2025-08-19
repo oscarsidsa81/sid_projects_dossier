@@ -8,6 +8,7 @@
     'author': 'oscarsidsa81',
     'depends': ['base','crm','sale_management','documents','oct_sale_extra_fields'],
     'data': [
+        'security/ir.model.access.csv',
         'views/sid_projects_dossier_sales.xml',
         'data/sid_dossier_assign_wizard.xml',
         'data/document_actions.xml',
