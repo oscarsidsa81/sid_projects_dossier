@@ -14,6 +14,7 @@
                     <field name="tiene_dossier" optional="hide" readonly='1'/>
                     <field name="name" string="Number" readonly="1" decoration-bf="1"/>
                     <field name="quotations_id" string="Pedido/Contrato" readonly="1" decoration-bf="1"/>
+                    <field name="dossier_asignado" string="Dossier asignado" readonly="1" decoration-bf="1"/>
                     <button
                             name="action_open_dossier_folder"
                             type="object"
