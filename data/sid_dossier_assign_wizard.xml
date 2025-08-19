@@ -82,7 +82,6 @@
                         name="%(action_dossier_assign_wizard)d"
                         string="Dossier"
                         class="oe_highlight"
-                        context="{'default_sale_order_id': id}"/>
             </xpath>
         </field>
     </record>
