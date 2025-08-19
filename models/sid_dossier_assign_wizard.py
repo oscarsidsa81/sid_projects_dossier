@@ -2,93 +2,120 @@
 from odoo import api, fields, models, _
 from .sid_dossier_similarity import _scoped_domain, _candidate_basenames, _get_root_workspace
 
-class DossierAssignWizard(models.TransientModel):
+
+class DossierAssignCandidate ( models.TransientModel ) :
+    _name = 'dossier.assign.candidate'
+    _description = 'Candidatos de carpeta para dossier (wizard)'
+
+    wizard_id = fields.Many2one ( 'dossier.assign.wizard', required=True, ondelete='cascade' )
+    folder_id = fields.Many2one ( 'documents.folder', required=True, string='Carpeta' )
+    match_basis = fields.Char ( string='Criterio' )  # p.ej. el basename que originó la coincidencia
+    parent_folder_id = fields.Many2one ( related='folder_id.parent_folder_id', string='Padre', store=False,
+                                         readonly=True )
+
+    def action_pick(self) :
+        """Selecciona esta carpeta en el wizard."""
+        self.ensure_one ()
+        wiz = self.wizard_id
+        wiz.write ( {'mode' : 'existing', 'existing_folder_id' : self.folder_id.id} )
+        # No devolvemos acción; el wizard sigue abierto y el usuario puede pulsar Confirmar.
+
+
+class DossierAssignWizard ( models.TransientModel ) :
     _name = 'dossier.assign.wizard'
     _description = 'Asignar carpeta de dossier'
 
-    sale_order_id = fields.Many2one('sale.order', required=True)
-    mode = fields.Selection([
+    sale_order_id = fields.Many2one ( 'sale.order', required=True )
+    mode = fields.Selection ( [
         ('existing', 'Usar carpeta existente'),
         ('new', 'Crear nueva carpeta'),
-    ], required=True, default='existing')
+    ], required=True, default='existing' )
 
-    existing_folder_id = fields.Many2one(
-        'documents.folder',
-        string='Carpeta existente',
-    )
-    new_folder_name = fields.Char(string='Nombre de la nueva carpeta')
+    existing_folder_id = fields.Many2one ( 'documents.folder', string='Carpeta existente' )
+    new_folder_name = fields.Char ( string='Nombre de la nueva carpeta' )
+
+    candidate_ids = fields.One2many ( 'dossier.assign.candidate', 'wizard_id', string='Sugerencias' )
 
     @api.model
-    def default_get(self, fields_list):
-        res = super().default_get(fields_list)
-        so_id = self.env.context.get('default_sale_order_id') or self.env.context.get('active_id')
-        so = self.env['sale.order'].browse(so_id)
+    def default_get(self, fields_list) :
+        res = super ().default_get ( fields_list )
+        so_id = self.env.context.get ( 'default_sale_order_id' ) or self.env.context.get ( 'active_id' )
+        so = self.env['sale.order'].browse ( so_id )
         res['sale_order_id'] = so.id
 
-        # Sugerencias basadas en candidatos
-        candidates = _candidate_basenames(so, so._extract_raw_name(so))
+        candidates = _candidate_basenames ( so, so._extract_raw_name ( so ) )
         Folder = self.env['documents.folder']
-        existing = Folder.search(
-            _scoped_domain(so, [('name', 'ilike', (candidates[0] + '%') if candidates else '')]),
+
+        # Primera candidata existente para prefijar el modo/selección
+        first_existing = Folder.search (
+            _scoped_domain ( so, [('name', 'ilike', (candidates[0] + '%') if candidates else '')] ),
             limit=1
         )
-        if existing:
+        if first_existing :
             res['mode'] = 'existing'
-            res['existing_folder_id'] = existing.id
-        else:
+            res['existing_folder_id'] = first_existing.id
+        else :
             res['mode'] = 'new'
             res['new_folder_name'] = (candidates[0] if candidates else (so.quotations_id.name or so.name))
+
+        # Poblar la tabla de candidatos (todas las coincidencias por cada basename)
+        line_vals = []
+        for base in candidates :
+            matches = Folder.search ( _scoped_domain ( so, [('name', 'ilike', base + '%')] ), limit=50 )
+            for f in matches :
+                line_vals.append ( (0, 0, {'folder_id' : f.id, 'match_basis' : base}) )
+        res['candidate_ids'] = line_vals
         return res
 
-    @api.onchange('sale_order_id', 'mode')
-    def _onchange_set_domain(self):
+    @api.onchange ( 'sale_order_id', 'mode' )
+    def _onchange_set_domain(self) :
         """Limita la selección al ROOT y excluye 'Archivado'."""
-        if not self.sale_order_id:
+        if not self.sale_order_id :
             return {}
-        root = _get_root_workspace(self.sale_order_id)
-        exclude = self.sale_order_id._get_folder_by_xmlid(self.sale_order_id.XMLID_EXCLUDE_FOLDER)
+        root = _get_root_workspace ( self.sale_order_id )
+        exclude = self.sale_order_id._get_folder_by_xmlid ( self.sale_order_id.XMLID_EXCLUDE_FOLDER )
         dom = [('id', 'child_of', root.id)]
-        if exclude:
+        if exclude :
             dom += ['!', ('id', 'child_of', exclude.id)]
-        return {'domain': {'existing_folder_id': dom}}
+        return {'domain' : {'existing_folder_id' : dom}}
 
-    @api.onchange('mode')
-    def _onchange_mode(self):
-        if self.mode == 'existing':
+    @api.onchange ( 'mode' )
+    def _onchange_mode(self) :
+        if self.mode == 'existing' :
             self.new_folder_name = False
-        else:
+        else :
             self.existing_folder_id = False
 
-    def action_confirm(self):
-        self.ensure_one()
+    def action_confirm(self) :
+        self.ensure_one ()
         so = self.sale_order_id
         Folder = self.env['documents.folder']
 
-        if self.mode == 'existing' and self.existing_folder_id:
+        if self.mode == 'existing' and self.existing_folder_id :
             folder = self.existing_folder_id
-        elif self.mode == 'new' and self.new_folder_name:
-            parent = so._get_current_year_folder()  # valida que cuelga del ROOT
-            folder = Folder.create({'name': self.new_folder_name, 'parent_folder_id': parent.id})
-        else:
+        elif self.mode == 'new' and self.new_folder_name :
+            parent = so._get_current_year_folder ()  # valida que cuelga de ROOT
+            folder = Folder.create ( {'name' : self.new_folder_name, 'parent_folder_id' : parent.id} )
+        else :
             return
 
-        related = self.env['sale.order'].search([
+        related = self.env['sale.order'].search ( [
             ('quotations_id', '=', so.quotations_id.id),
             ('partner_id', '=', so.partner_id.id),
-        ])
-        related.write({'tiene_dossier': True, 'dossier_asignado': folder.name})
+        ] )
+        related.write ( {'tiene_dossier' : True, 'dossier_asignado' : folder.name} )
 
         return {
-            'name': _('Document Folder'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'documents.document',
-            'view_mode': 'tree,kanban,form',
-            'context': {
-                'searchpanel_default_folder_id': folder.id,
-                'searchpanel_default_folder_id_domain': [('folder_id', '=', folder.id)],
-                'group_by': 'folder_id',
-                'search_default_folder_id': folder.id,
-                'default_folder_id': folder.id,
+            'name' : _ ( 'Document Folder' ),
+            'type' : 'ir.actions.act_window',
+            'res_model' : 'documents.document',
+            'view_mode' : 'tree,kanban,form',
+            'context' : {
+                'searchpanel_default_folder_id' : folder.id,
+                'searchpanel_default_folder_id_domain' : [('folder_id', '=', folder.id)],
+                'group_by' : 'folder_id',
+                'search_default_folder_id' : folder.id,
+                'default_folder_id' : folder.id,
             },
-            'target': 'current',
+            'target' : 'current',
         }
