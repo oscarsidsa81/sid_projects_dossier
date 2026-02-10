@@ -1,6 +1,6 @@
 {
     'name': 'sid_projects_dossier',
-    'version': '1.0',
+    'version': '1.0.1',
     'category': 'Sales',
     'license': 'AGPL-3',
     'summary': 'Control de Base Imponible',
