@@ -11,12 +11,13 @@
         'security/ir.model.access.csv',
         # Primero la acción del wizard, para poder referenciarla en vistas
         'data/sid_dossier_assign_wizard.xml',
+        # Después las vistas que usan %(...)d
+        'views/sid_projects_dossier_sales.xml',
+        # Acciones/menús que referencian vistas
         'data/document_actions.xml',
         'data/document_folders.xml',
         'data/document_group.xml',
         'data/documents_tags.xml',
-        # Después las vistas que usan %(...)d
-        'views/sid_projects_dossier_sales.xml',
     ],
     'installable': True,
     'auto_install': False,
