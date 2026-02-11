@@ -1,4 +1,5 @@
-from odoo import fields, models, api
+from odoo import fields, models, api, _
+from odoo.exceptions import UserError
 
 
 class SaleOrderDossier ( models.Model ) :
@@ -16,6 +17,29 @@ class SaleOrderDossier ( models.Model ) :
         store=True,
         readonly=True,
     )
+
+    # ---------------------------------------------------------------------
+    # Botones usados en vistas
+    # ---------------------------------------------------------------------
+    # Nota: estos métodos se definen también en otros mixins del módulo.
+    # Dejar aquí una implementación "segura" evita errores de validación
+    # de vistas si por cualquier motivo no se cargara el otro mixin.
+
+    def action_open_dossier_assign_wizard(self):
+        """Abre el wizard de asignación de dossier."""
+        self.ensure_one()
+        action = self.env.ref('sid_projects_dossier.action_dossier_assign_wizard', raise_if_not_found=False)
+        if not action:
+            raise UserError(_("No se encuentra la acción del wizard de dossier."))
+        vals = action.read()[0]
+        ctx = dict(self.env.context or {})
+        ctx.update({'default_sale_order_id': self.id})
+        vals['context'] = ctx
+        return vals
+
+    def action_open_dossier_folder(self):
+        """Compatibilidad: si el otro mixin no está, al menos abre el wizard."""
+        return self.action_open_dossier_assign_wizard()
 
 class DocumentsDocumentDossier ( models.Model ) :
     _inherit = 'documents.document'
