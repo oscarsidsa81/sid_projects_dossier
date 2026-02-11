@@ -35,8 +35,8 @@
                                 <field name="new_folder_name"
                                        attrs="{'invisible':[('mode','!=','new')], 'required':[('mode','=','new')]}"/>
 
-                                <field name=\"warning_msg\" nolabel=\"1\" readonly=\"1\" attrs=\"{'invisible':[('warning_msg','=',False)]}\"/>
-                                <field name=\"force_override\" attrs=\"{'invisible':[('warning_msg','=',False)]}\" groups=\"sid_projects_dossier.group_dossier_manager\"/>
+                                <field name="warning_msg" nolabel="1" readonly="1" attrs="{'invisible':[('warning_msg','=',False)]}"/>
+                                <field name="force_override" attrs="{'invisible':[('warning_msg','=',False)]}" groups="sid_projects_dossier.group_dossier_manager"/>
 
                             </group>
                         </page>
@@ -82,10 +82,7 @@
         <field name="inherit_id" ref="sale.view_order_form"/>
         <field name="arch" type="xml">
             <xpath expr="//header" position="inside">
-                <button type="object"
-                        name="action_open_dossier_assign_wizard"
-                        string="Dossier"
-                        class="oe_highlight"/>
+                <button type="action" name="%(sid_projects_dossier.action_dossier_assign_wizard)d" string="Dossier" class="oe_highlight"/>
             </xpath>
         </field>
     </record>

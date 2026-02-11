@@ -9,12 +9,14 @@
     'depends': ['base','crm','sale_management','documents','oct_sale_extra_fields'],
     'data': [
         'security/ir.model.access.csv',
-        'views/sid_projects_dossier_sales.xml',
+        # Primero la acción del wizard, para poder referenciarla en vistas
         'data/sid_dossier_assign_wizard.xml',
         'data/document_actions.xml',
         'data/document_folders.xml',
         'data/document_group.xml',
         'data/documents_tags.xml',
+        # Después las vistas que usan %(...)d
+        'views/sid_projects_dossier_sales.xml',
     ],
     'installable': True,
     'auto_install': False,
