@@ -4,7 +4,7 @@ from odoo.exceptions import UserError
 import re
 import logging
 from difflib import SequenceMatcher  # stdlib
-from .sid_dossier_similarity import _scoped_domain, _candidate_basenames, _get_root_workspace
+from .sid_dossier_similarity import _get_root_workspace
 
 _logger = logging.getLogger ( __name__ )
 
@@ -158,34 +158,62 @@ class SaleOrder ( models.Model ) :
     # -------------------------------------------------------------------------
     # Búsqueda de carpeta existente (ámbito aplicado)
     # -------------------------------------------------------------------------
-    @api.model
-    def _find_existing_folder_for(self, so) :
-        """
-        Estrategia:
-          A) Buscar por candidatos deterministas ('…-TIPO-digits[letter]%') bajo ROOT y excluyendo Archivado.
-          B) Fallback heurístico (raw ilike y base corta + '%') bajo el mismo ámbito.
-        """
-        Folder = self.env['documents.folder']
-        raw = self._extract_raw_name ( so )
-        if not raw :
-            return Folder.browse ()
+    # -------------------------------------------------------------------------
+# Dossier "root" por jerarquía de quotations (parent_id/child_ids)
+# -------------------------------------------------------------------------
+@api.model
+def _get_root_quotation(self, so):
+    """Devuelve el quotation raíz (contrato principal) subiendo por parent_id si existe."""
+    q = so.quotations_id
+    # Soportar instalaciones donde quotations_id no tenga parent_id
+    while q and getattr(q, "parent_id", False):
+        q = q.parent_id
+    return q
 
-        # A) Candidatos (no mezcla CON/VAO)
-        for base in _candidate_basenames ( self, raw ) :
-            res = Folder.search ( _scoped_domain ( self, [('name', 'ilike', base + '%')] ), limit=1 )
-            if res :
-                return res
+@api.model
+def _get_dossier_key(self, so):
+    """Clave determinista del dossier: nombre del quotation raíz (contrato principal)."""
+    root_q = self._get_root_quotation(so)
+    return (root_q.name if root_q and root_q.name else (so.quotations_id.name if so.quotations_id else so.name)) or ""
 
-        # B) Heurística original dentro del ámbito
-        candidates = Folder.search ( _scoped_domain ( self, [('name', 'ilike', raw)] ) )
-        if candidates :
-            names = [f.name or '' for f in candidates]
-            base_order = min ( names, key=len ) if names else raw
-            res = Folder.search ( _scoped_domain ( self, [('name', 'ilike', base_order + '%')] ), limit=1 )
-            if res :
-                return res
+# -------------------------------------------------------------------------
+# Búsqueda determinista de carpeta existente (SIN heurística)
+# -------------------------------------------------------------------------
+@api.model
+def _find_existing_folder_for(self, so):
+    """Busca la carpeta del dossier por nombre exacto del quotation raíz.
 
-        return Folder.browse ()
+    - Primero: bajo la carpeta del año actual (sid_folder_YYYY)
+    - Fallback: bajo el workspace raíz (por si existe en otro año)
+    """
+    Folder = self.env["documents.folder"]
+    key = (self._get_dossier_key(so) or "").strip()
+    if not key:
+        return Folder.browse()
+
+    root_ws = _get_root_workspace(self)
+    exclude = self._get_folder_by_xmlid(self.XMLID_EXCLUDE_FOLDER)
+
+    # 1) Año actual (preferente)
+    try:
+        year_folder = self._get_current_year_folder()
+    except Exception:
+        year_folder = Folder.browse()
+
+    if year_folder:
+        dom = [("parent_folder_id", "=", year_folder.id), ("name", "=", key)]
+        if exclude:
+            dom += ["!", ("id", "child_of", exclude.id)]
+        f = Folder.search(dom, limit=1)
+        if f:
+            return f
+
+    # 2) Fallback: cualquier sitio bajo root workspace (mismo nombre exacto)
+    dom = [("id", "child_of", root_ws.id), ("name", "=", key)]
+    if exclude:
+        dom += ["!", ("id", "child_of", exclude.id)]
+    return Folder.search(dom, limit=1) or Folder.browse()
+
 
     # -------------------------------------------------------------------------
     # Botón seguro para abrir el WIZARD (evita ParserError en vista)
@@ -220,7 +248,7 @@ class SaleOrder ( models.Model ) :
                 ('quotations_id', '=', so.quotations_id.id),
                 ('partner_id', '=', so.partner_id.id),
             ] )
-            sale_orders.write ( {'tiene_dossier' : True, 'dossier_asignado' : folder.name} )
+            sale_orders.write ( {'tiene_dossier' : True, 'dossier_asignado' : so._get_dossier_key(so)} )
 
             return {
                 'name' : _ ( 'Document Folder' ),
@@ -261,6 +289,13 @@ class SaleOrder ( models.Model ) :
         self.ensure_one ()
         so = self
 
+        # No crear estructura desde adendas: el dossier siempre pertenece al contrato principal (quotation raíz)
+        root_q = so._get_root_quotation(so)
+        if so.quotations_id and getattr(so.quotations_id, "parent_id", False):
+            raise UserError(_(
+                "Este presupuesto es una adenda. El dossier debe crearse/gestionarse en el contrato principal (%s)."
+            ) % (root_q.name or ""))
+
         Folder = self.env['documents.folder']
         Request = self.env['documents.request_wizard']  # ajusta si tu modelo difiere
 
@@ -272,7 +307,7 @@ class SaleOrder ( models.Model ) :
         # Usuario (único) desde el grupo
         owner_id = self._get_request_owner_id_from_group ()
 
-        order_code = (so.quotations_id and so.quotations_id.name) or so.name or _ ( 'Dossier' )
+        order_code = so._get_dossier_key(so) or _ ( 'Dossier' )
         confirmed_orders = self.env['sale.order'].search ( [
             ('state', '=', 'sale'),
             ('quotations_id', '=', so.quotations_id.id),
@@ -282,7 +317,7 @@ class SaleOrder ( models.Model ) :
         # ¿ya existe?
         existing_folder = self._find_existing_folder_for ( so )
         if existing_folder :
-            confirmed_orders.write ( {'tiene_dossier' : True, 'dossier_asignado' : existing_folder.name} )
+            confirmed_orders.write ( {'tiene_dossier' : True, 'dossier_asignado' : so._get_dossier_key(so)} )
             orders_str = ', '.join ( confirmed_orders.mapped ( 'name' ) ) or _ ( '(ninguno)' )
             return {
                 'type' : 'ir.actions.client',
@@ -318,7 +353,7 @@ class SaleOrder ( models.Model ) :
                 workspace_parent.write ( {'facet_ids' : [(4, facet.id) for facet in similar_facets_parent]} )
 
         # Marcar pedidos confirmados (usar la carpeta recién creada)
-        confirmed_orders.write ( {'tiene_dossier' : True, 'dossier_asignado' : workspace_parent.name} )
+        confirmed_orders.write ( {'tiene_dossier' : True, 'dossier_asignado' : so._get_dossier_key(so)} )
 
         estados = ['Proveedor', 'Enviado', 'Comentarios', 'Rechazado', 'Aprobado']
         folders_sin_estado = [

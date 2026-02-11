@@ -34,6 +34,10 @@
 
                                 <field name="new_folder_name"
                                        attrs="{'invisible':[('mode','!=','new')], 'required':[('mode','=','new')]}"/>
+
+                                <field name=\"warning_msg\" nolabel=\"1\" readonly=\"1\" attrs=\"{'invisible':[('warning_msg','=',False)]}\"/>
+                                <field name=\"force_override\" attrs=\"{'invisible':[('warning_msg','=',False)]}\" groups=\"sid_projects_dossier.group_dossier_manager\"/>
+
                             </group>
                         </page>
 
