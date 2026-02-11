@@ -48,6 +48,75 @@ class SaleOrderDossier ( models.Model ) :
         """
         return self.action_open_dossier_assign_wizard()
 
+    # ---------------------------------------------------------------------
+    # Helpers usados por el wizard
+    # ---------------------------------------------------------------------
+    # Ojo: en este módulo hay varios mixins sobre sale.order. El wizard llama
+    # a estos helpers durante default_get/onchange. Para evitar AttributeError
+    # por orden de carga o refactors, los definimos aquí (mixin “base”).
+
+    @api.model
+    def _get_root_quotation(self, so):
+        """Quotation raíz (contrato principal) subiendo por parent_id si existe."""
+        q = so.quotations_id
+        while q and getattr(q, 'parent_id', False):
+            q = q.parent_id
+        return q
+
+    @api.model
+    def _get_dossier_key(self, so):
+        """Clave determinista del dossier: nombre del quotation raíz."""
+        root_q = self._get_root_quotation(so)
+        return (
+            (root_q.name if root_q and root_q.name else '')
+            or (so.quotations_id.name if so.quotations_id else '')
+            or (so.name or '')
+        )
+
+    @api.model
+    def _find_existing_folder_for(self, so):
+        """Búsqueda determinista de carpeta: nombre exacto del quotation raíz.
+
+        1) Bajo la carpeta del año actual (sid_folder_YYYY)
+        2) Fallback: en cualquier sitio bajo el workspace raíz
+        """
+        Folder = self.env['documents.folder']
+        key = (self._get_dossier_key(so) or '').strip()
+        if not key:
+            return Folder.browse()
+
+        # Workspace raíz (si existe)
+        root_ws = self.env.ref('sid_projects_dossier.sid_workspace_quality_dossiers', raise_if_not_found=False)
+
+        # Excluir carpeta Archivado si existe
+        exclude = self.env.ref('sid_projects_dossier.sid_workspace_archived', raise_if_not_found=False)
+
+        # 1) Año actual
+        year_folder = None
+        if hasattr(self, '_get_current_year_folder'):
+            try:
+                year_folder = self._get_current_year_folder()
+            except Exception:
+                year_folder = None
+
+        if year_folder:
+            dom = [('parent_folder_id', '=', year_folder.id), ('name', '=', key)]
+            if exclude:
+                dom += ['!', ('id', 'child_of', exclude.id)]
+            f = Folder.search(dom, limit=1)
+            if f:
+                return f
+
+        # 2) Fallback: bajo root_ws
+        if root_ws:
+            dom = [('id', 'child_of', root_ws.id), ('name', '=', key)]
+            if exclude:
+                dom += ['!', ('id', 'child_of', exclude.id)]
+            return Folder.search(dom, limit=1) or Folder.browse()
+
+        # Último recurso: por nombre exacto en cualquier sitio
+        return Folder.search([('name', '=', key)], limit=1) or Folder.browse()
+
 
 class DocumentsDocumentDossier ( models.Model ) :
     _inherit = 'documents.document'
