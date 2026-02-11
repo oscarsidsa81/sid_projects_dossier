@@ -41,6 +41,14 @@ class SaleOrderDossier ( models.Model ) :
         """Compatibilidad: si el otro mixin no está, al menos abre el wizard."""
         return self.action_open_dossier_assign_wizard()
 
+    def action_create_dossier_folders(self):
+        """Compatibilidad: garantiza que el botón de la vista no rompa la instalación.
+        La lógica completa vive en sid_projects_dossier_server_actions.
+        Aquí devolvemos el wizard para que el usuario continúe de forma segura.
+        """
+        return self.action_open_dossier_assign_wizard()
+
+
 class DocumentsDocumentDossier ( models.Model ) :
     _inherit = 'documents.document'
 
