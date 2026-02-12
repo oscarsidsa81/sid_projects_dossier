@@ -164,12 +164,21 @@ class SaleOrderDossierRelated(models.Model):
                     'default_mode': 'existing',
                 },
             }
+        # Open Documents view filtered to this folder (and children) and select it in the SearchPanel.
         return {
+            'name': _('Document Folder'),
             'type': 'ir.actions.act_window',
-            'name': _('Dossier'),
-            'res_model': 'documents.folder',
-            'view_mode': 'form',
-            'res_id': folder.id,
+            'res_model': 'documents.document',
+            'view_mode': 'tree,kanban',
+            'domain': [('folder_id', 'child_of', folder.id)],
+            'context': {
+                # Preselect folder in the SearchPanel
+                'searchpanel_default_folder_id': folder.id,
+                # Some UIs look for a default domain in context (harmless if unused)
+                'searchpanel_default_folder_id_domain': [('folder_id', '=', folder.id)],
+                # Optional: group by folder
+                'group_by': 'folder_id',
+            },
             'target': 'current',
         }
 
