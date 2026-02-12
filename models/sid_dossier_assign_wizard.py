@@ -1,303 +1,213 @@
 # -*- coding: utf-8 -*-
-# models/sid_dossier_assign_wizard.py
+
+from datetime import date
 
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
-from .sid_dossier_similarity import _get_root_workspace
 
+class SidDossierAssignWizard(models.TransientModel):
+    _name = 'sid.dossier.assign.wizard'
+    _description = 'Crear/Vincular dossier de calidad'
 
-class DossierAssignCandidate(models.TransientModel):
-    _name = "dossier.assign.candidate"
-    _description = "Candidatos de carpeta para dossier (wizard)"
+    sale_order_id = fields.Many2one('sale.order', string='Pedido', readonly=True)
+    quotation_id = fields.Many2one('sale.quotations', string='Presupuesto/Contrato', required=True)
 
-    wizard_id = fields.Many2one("dossier.assign.wizard", required=True, ondelete="cascade")
-    folder_id = fields.Many2one("documents.folder", required=True, string="Carpeta")
-    match_basis = fields.Char(string="Criterio")
-    parent_folder_id = fields.Many2one(
-        related="folder_id.parent_folder_id", string="Padre", store=False, readonly=True
-    )
-
-    def action_pick(self):
-        self.ensure_one()
-        self.wizard_id.write({"mode": "existing", "existing_folder_id": self.folder_id.id})
-
-
-class DossierAssignWizard(models.TransientModel):
-    _name = "dossier.assign.wizard"
-    _description = "Asignar carpeta de dossier"
-
-    sale_order_id = fields.Many2one("sale.order", required=True, readonly=True)
-
-    dossier_type = fields.Selection(
-        [("principal", "Contrato principal"), ("adenda", "Adenda")],
-        string="Tipo",
+    contract_kind = fields.Selection(
+        selection=[('principal', 'Contrato principal'), ('adenda', 'Adenda')],
+        string='Tipo',
         required=True,
-        default="principal",
+        default='principal',
     )
-
-    dossier_key = fields.Char(string="Dossier (según sale.quotations)", readonly=True)
 
     mode = fields.Selection(
-        [("existing", "Usar carpeta existente"), ("new", "Crear dossier")],
+        selection=[('new', 'Crear dossier nuevo'), ('existing', 'Vincular dossier existente')],
+        string='Operación',
         required=True,
-        default="existing",
+        default='new',
     )
 
-    existing_folder_id = fields.Many2one("documents.folder", string="Carpeta existente")
-    new_folder_name = fields.Char(string="Nombre del dossier", readonly=True)
-
-    warning_msg = fields.Text(string="Avisos", readonly=True)
-    force_override = fields.Boolean(
-        string="Forzar reasignación",
-        help="Solo administradores. Permite asignar aunque haya documentos/asignaciones o el nombre no coincida.",
+    principal_quotation_id = fields.Many2one(
+        'sale.quotations',
+        string='Contrato principal',
+        domain="[('parent_id','=',False)]",
     )
 
-    candidate_ids = fields.One2many("dossier.assign.candidate", "wizard_id", string="Carpetas encontradas")
+    existing_folder_id = fields.Many2one(
+        'documents.folder',
+        string='Dossier existente (nivel 2)',
+        domain=[],
+    )
+
+    new_folder_name = fields.Char(string='Nombre del dossier', readonly=True)
+
+    warning_message = fields.Text(string='Aviso', readonly=True)
 
     # ---------------------------------------------------------------------
-    # Permisos
+    # Helpers: root/year folders
     # ---------------------------------------------------------------------
-    def _user_can_force(self):
-        so = self.sale_order_id or self.env["sale.order"]
-        return bool(self.env.user.has_group(so.XMLID_DOSSIER_OWNER_GROUP))
 
-    # ---------------------------------------------------------------------
-    # Cálculo dossier (sale.quotations)
-    # ---------------------------------------------------------------------
-    def _compute_dossier_key(self, so, dossier_type):
-        """Dossier = quotations_id.name o parent_id.name si es adenda."""
-        q = so.quotations_id
-        if not q:
-            return (so.name or "").strip()
-        if dossier_type == "adenda" and getattr(q, "parent_id", False):
-            return (q.parent_id.name or q.name or so.name or "").strip()
-        return (q.name or so.name or "").strip()
+    def _get_root_folder(self):
+        root = self.env.ref('sid_projects_dossier.folder_root_dossieres_calidad', raise_if_not_found=False)
+        if root:
+            return root
+        # Fallback by name
+        return self.env['documents.folder'].sudo().search([
+            ('name', '=', 'Dossieres de calidad'),
+            ('parent_folder_id', '=', False)
+        ], limit=1)
 
-    def _list_candidate_folders(self, dossier_key):
-        """Devuelve folders candidatos en TODOS los años (bajo el workspace root)."""
-        Folder = self.env["documents.folder"].sudo()
-        root = _get_root_workspace(self.sale_order_id)
-        exclude = self.sale_order_id._get_folder_by_xmlid(self.sale_order_id.XMLID_EXCLUDE_FOLDER)
+    def _ensure_year_folder(self, year_int: int):
+        root = self._get_root_folder()
+        if not root:
+            raise UserError(_('No se ha encontrado el root "Dossieres de calidad" en Documentos.'))
+        Folder = self.env['documents.folder'].sudo()
+        yname = str(year_int)
+        year_folder = Folder.search([('parent_folder_id', '=', root.id), ('name', '=', yname)], limit=1)
+        if not year_folder:
+            year_folder = Folder.create({'name': yname, 'parent_folder_id': root.id})
+        return year_folder
 
-        dom = [("id", "child_of", root.id)]
-        if exclude:
-            dom += ["!", ("id", "child_of", exclude.id)]
+    def _folder_has_documents(self, folder):
+        Doc = self.env['documents.document'].sudo()
+        return bool(Doc.search_count([('folder_id', '=', folder.id)]))
 
-        # 1) exact match
-        exact = Folder.search(dom + [("name", "=", dossier_key)], limit=20)
-
-        # 2) por si hay sufijos/prefijos, ofrecer ilike (limitado)
-        like = Folder.search(dom + [("name", "ilike", dossier_key)], limit=20)
-
-        # mantener orden: exact primero, luego el resto
-        seen = set()
-        res = []
-        for f in exact:
-            if f.id not in seen:
-                res.append((f, "Nombre exacto"))
-                seen.add(f.id)
-        for f in like:
-            if f.id not in seen:
-                res.append((f, "Coincidencia parcial"))
-                seen.add(f.id)
-        return res
-
-    def _compute_warnings(self, dossier_key, target_folder):
-        """Devuelve (warning_msg, block_reason_or_None)."""
-        so = self.sale_order_id
-        if not so:
-            return ("", None)
-
-        msgs = []
-        block_reason = None
-
-        # coherencia nombre carpeta
-        if target_folder and dossier_key and (target_folder.name or "").strip() != dossier_key:
-            msgs.append(
-                _(
-                    "La carpeta seleccionada ('%s') NO coincide con el dossier esperado ('%s')."
-                )
-                % (target_folder.name, dossier_key)
-            )
-            block_reason = _(
-                "No se permite asignar una carpeta cuyo nombre no coincide con el dossier (según sale.quotations)."
-            )
-
-        # guardarraíles por cambio de asignación
-        current_key = (so.dossier_asignado or "").strip()
-        if current_key and dossier_key and current_key != dossier_key:
-            Folder = self.env["documents.folder"].sudo()
-            Documents = self.env["documents.document"].sudo()
-
-            current_folder = Folder.search([("name", "=", current_key)], limit=1)
-            if current_folder:
-                doc_count = Documents.search_count([("folder_id", "child_of", current_folder.id)])
-                if doc_count:
-                    msgs.append(_("El dossier actual '%s' ya contiene %s documento(s).") % (current_key, doc_count))
-                    block_reason = _(
-                        "No se permite modificar la asignación porque el dossier actual ya tiene documentos."
-                    )
-
-            other_orders = self.env["sale.order"].sudo().search_count(
-                [("id", "!=", so.id), ("tiene_dossier", "=", True), ("dossier_asignado", "=", current_key)]
-            )
-            if other_orders:
-                msgs.append(
-                    _("El dossier actual '%s' está asignado a otros %s pedido(s).") % (current_key, other_orders)
-                )
-                block_reason = block_reason or _(
-                    "No se permite modificar la asignación porque el dossier actual está referenciado por otros pedidos."
-                )
-
-        return ("\n".join(msgs), block_reason)
+    def _folder_linked_to_other_contract(self, folder, root_quotation):
+        Q = self.env['sale.quotations'].sudo()
+        other = Q.search([
+            ('dossier_folder_id', '=', folder.id),
+            ('id', '!=', root_quotation.id),
+        ], limit=1)
+        return other
 
     # ---------------------------------------------------------------------
-    # Defaults / onchange
+    # Onchange / defaults
     # ---------------------------------------------------------------------
+
     @api.model
     def default_get(self, fields_list):
         res = super().default_get(fields_list)
 
-        so_id = self.env.context.get("default_sale_order_id") or self.env.context.get("active_id")
-        so = self.env["sale.order"].browse(so_id)
-        res["sale_order_id"] = so.id
+        qid = res.get('quotation_id')
+        if qid:
+            q = self.env['sale.quotations'].browse(qid).exists()
+            if q:
+                root = q.dossier_root_id or q
+                res['new_folder_name'] = root.name
+                # default contract_kind from relationship
+                res['contract_kind'] = 'principal' if not q.parent_id else 'adenda'
 
-        # tipo por defecto basado en quotations.parent_id
-        is_adenda = bool(so.quotations_id and getattr(so.quotations_id, "parent_id", False))
-        res["dossier_type"] = "adenda" if is_adenda else "principal"
-
-        dossier_key = self._compute_dossier_key(so, res["dossier_type"])
-        res["dossier_key"] = dossier_key
-        res["new_folder_name"] = dossier_key
-
-        # candidatos por nombre en todos los años
-        candidates = self._list_candidate_folders(dossier_key)
-        lines = []
-        for f, reason in candidates:
-            lines.append((0, 0, {"folder_id": f.id, "match_basis": reason}))
-        res["candidate_ids"] = lines
-
-        # modo por defecto
-        exact = candidates[0][0] if candidates and candidates[0][1] == "Nombre exacto" else None
-        if exact:
-            res["mode"] = "existing"
-            res["existing_folder_id"] = exact.id
-        else:
-            # si es adenda, no crear automáticamente: obligar a elegir existente
-            if is_adenda:
-                res["mode"] = "existing"
-                res["existing_folder_id"] = False
-            else:
-                res["mode"] = "new"
+                if res.get('contract_kind') == 'adenda':
+                    res['principal_quotation_id'] = root.id
+                    if root.dossier_folder_id:
+                        res['mode'] = 'existing'
+                        res['existing_folder_id'] = root.dossier_folder_id.id
 
         return res
 
-    @api.onchange("dossier_type")
-    def _onchange_dossier_type(self):
-        if not self.sale_order_id:
+    @api.onchange('quotation_id')
+    def _onchange_quotation(self):
+        if not self.quotation_id:
             return
-        dossier_key = self._compute_dossier_key(self.sale_order_id, self.dossier_type)
-        self.dossier_key = dossier_key
-        self.new_folder_name = dossier_key
+        root = self.quotation_id.dossier_root_id or self.quotation_id
+        self.new_folder_name = root.name
+        self.contract_kind = 'principal' if not self.quotation_id.parent_id else 'adenda'
+        if self.contract_kind == 'adenda':
+            self.principal_quotation_id = root
+            if root.dossier_folder_id:
+                self.mode = 'existing'
+                self.existing_folder_id = root.dossier_folder_id
 
-        # refrescar candidatos
-        self.candidate_ids = [(5, 0, 0)]
-        candidates = self._list_candidate_folders(dossier_key)
-        self.candidate_ids = [(0, 0, {"folder_id": f.id, "match_basis": reason}) for f, reason in candidates]
-
-        # por defecto: si hay match exacto, seleccionar y poner modo existing
-        exact = next((f for f, reason in candidates if reason == "Nombre exacto"), False)
-        if exact:
-            self.mode = "existing"
-            self.existing_folder_id = exact
-        else:
-            # si es adenda, no permitir crear por defecto
-            if self.dossier_type == "adenda":
-                self.mode = "existing"
-                self.existing_folder_id = False
-            else:
-                self.mode = "new"
-                self.existing_folder_id = False
-
-    @api.onchange("sale_order_id")
-    def _onchange_sale_order_id(self):
-        if not self.sale_order_id:
+    @api.onchange('contract_kind')
+    def _onchange_contract_kind(self):
+        if not self.quotation_id:
             return
-        is_adenda = bool(self.sale_order_id.quotations_id and getattr(self.sale_order_id.quotations_id, "parent_id", False))
-        self.dossier_type = "adenda" if is_adenda else "principal"
-        self._onchange_dossier_type()
+        root = self.quotation_id.dossier_root_id or self.quotation_id
+        if self.contract_kind == 'adenda':
+            self.principal_quotation_id = root
+            if root.dossier_folder_id:
+                self.mode = 'existing'
+                self.existing_folder_id = root.dossier_folder_id
 
-    @api.onchange("sale_order_id")
-    def _onchange_set_domain(self):
-        if not self.sale_order_id:
-            return {}
-        root = _get_root_workspace(self.sale_order_id)
-        exclude = self.sale_order_id._get_folder_by_xmlid(self.sale_order_id.XMLID_EXCLUDE_FOLDER)
-        dom = [("id", "child_of", root.id)]
-        if exclude:
-            dom += ["!", ("id", "child_of", exclude.id)]
-        return {"domain": {"existing_folder_id": dom}}
+    @api.onchange('mode', 'existing_folder_id', 'principal_quotation_id', 'quotation_id')
+    def _onchange_warnings(self):
+        self.warning_message = False
+        if self.mode != 'existing' or not self.existing_folder_id:
+            return
 
-    @api.onchange("mode", "existing_folder_id")
-    def _onchange_mode(self):
-        # mantener new_folder_name = dossier_key
-        self.new_folder_name = self.dossier_key
+        # Evaluate warnings
+        q = self.quotation_id
+        if not q:
+            return
+        root_q = (q.dossier_root_id or q) if self.contract_kind != 'adenda' else (self.principal_quotation_id or q.dossier_root_id or q)
 
-        target = self.existing_folder_id if self.mode == "existing" else None
-        self.warning_msg, _block = self._compute_warnings(self.dossier_key, target)
+        msgs = []
+        if self._folder_has_documents(self.existing_folder_id):
+            msgs.append(_('La carpeta seleccionada ya contiene documentos. Se recomienda NO reasignar salvo que sea intencionado.'))
+
+        other = self._folder_linked_to_other_contract(self.existing_folder_id, root_q)
+        if other:
+            msgs.append(_('La carpeta ya está vinculada al contrato: %s') % (other.display_name or other.name))
+
+        self.warning_message = '\n'.join(msgs) if msgs else False
+
+    # Dynamic domain for existing_folder_id (nivel 2 de todos los años)
+    @api.onchange('quotation_id')
+    def _onchange_existing_folder_domain(self):
+        root = self._get_root_folder()
+        if root:
+            return {
+                'domain': {
+                    'existing_folder_id': [('parent_folder_id.parent_folder_id', '=', root.id)],
+                }
+            }
+        return {
+            'domain': {'existing_folder_id': []}
+        }
 
     # ---------------------------------------------------------------------
     # Confirm
     # ---------------------------------------------------------------------
+
     def action_confirm(self):
         self.ensure_one()
-        so = self.sale_order_id
-        Folder = self.env["documents.folder"].sudo()
+        if not self.quotation_id:
+            raise UserError(_('Seleccione un presupuesto/contrato.'))
 
-        dossier_key = (self.dossier_key or "").strip()
-        if not dossier_key:
-            raise UserError(_("No se ha podido determinar el dossier (sale.quotations)."))
+        root_q = self.quotation_id.dossier_root_id or self.quotation_id
+        if self.contract_kind == 'adenda':
+            if not self.principal_quotation_id:
+                raise UserError(_('Seleccione el contrato principal.'))
+            root_q = self.principal_quotation_id.dossier_root_id or self.principal_quotation_id
 
-        is_adenda = self.dossier_type == "adenda"
+        Folder = self.env['documents.folder'].sudo()
 
-        # seleccionar / crear carpeta
-        if self.mode == "existing":
+        if self.mode == 'existing':
             if not self.existing_folder_id:
-                raise UserError(_("Selecciona una carpeta existente."))
-            folder = self.existing_folder_id
+                raise UserError(_('Seleccione una carpeta de dossier existente.'))
+            root_q.sudo().write({'dossier_folder_id': self.existing_folder_id.id})
+
         else:
-            if is_adenda:
-                raise UserError(_("No se puede crear un dossier desde una adenda. Selecciona el dossier del contrato principal."))
-            parent = so._get_current_year_folder()
-            # crear SOLO si no existe ya exact match
-            folder = Folder.search([("name", "=", dossier_key)], limit=1)
-            if not folder:
-                folder = Folder.create({"name": dossier_key, "parent_folder_id": parent.id})
+            # Create or reuse dossier folder under current year
+            year_folder = self._ensure_year_folder(date.today().year)
+            dossier_name = (self.new_folder_name or root_q.name or '').strip()
+            if not dossier_name:
+                raise UserError(_('No se pudo determinar el nombre del dossier.'))
 
-        warning_msg, block_reason = self._compute_warnings(dossier_key, folder)
-        self.warning_msg = warning_msg
+            dossier_folder = Folder.search([
+                ('parent_folder_id', '=', year_folder.id),
+                ('name', '=', dossier_name),
+            ], limit=1)
+            if not dossier_folder:
+                dossier_folder = Folder.create({'name': dossier_name, 'parent_folder_id': year_folder.id})
 
-        if block_reason and not (self.force_override and self._user_can_force()):
-            raise UserError(block_reason + ("\n\n" + warning_msg if warning_msg else ""))
+            root_q.sudo().write({'dossier_folder_id': dossier_folder.id})
 
-        # asignación: dossier_asignado = quotations_id.name o parent_id.name (si adenda)
-        # si el usuario fuerza una carpeta con nombre distinto, mantenemos coherencia con lo que se va a abrir: folder.name
-        assign_value = dossier_key
-        if folder and (folder.name or "").strip() != dossier_key and (self.force_override and self._user_can_force()):
-            assign_value = (folder.name or dossier_key).strip()
+        # Optional: chatter note (if mail.thread available)
+        try:
+            msg = _('Dossier asignado: %s') % (root_q.dossier_folder_id.display_name)
+            root_q.message_post(body=msg)
+        except Exception:
+            pass
 
-        so.write({"tiene_dossier": True, "dossier_asignado": assign_value})
-
-        return {
-            "name": _("Documentos del dossier"),
-            "type": "ir.actions.act_window",
-            "res_model": "documents.document",
-            "view_mode": "tree,kanban,form",
-            "context": {
-                "searchpanel_default_folder_id": folder.id,
-                "searchpanel_default_folder_id_domain": [("folder_id", "=", folder.id)],
-                "group_by": "folder_id",
-            },
-            "domain": [("folder_id", "child_of", folder.id)],
-        }
+        return {'type': 'ir.actions.act_window_close'}

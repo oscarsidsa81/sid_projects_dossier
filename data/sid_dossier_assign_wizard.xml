@@ -1,64 +1,35 @@
 <odoo>
 
-    <!-- TREE de candidatos -->
-    <record id="view_dossier_assign_candidate_tree" model="ir.ui.view">
-        <field name="name">dossier.assign.candidate.tree</field>
-        <field name="model">dossier.assign.candidate</field>
+    <!-- Wizard form -->
+    <record id="view_sid_dossier_assign_wizard_form" model="ir.ui.view">
+        <field name="name">sid.dossier.assign.wizard.form</field>
+        <field name="model">sid.dossier.assign.wizard</field>
         <field name="arch" type="xml">
-            <tree string="Carpetas encontradas" create="0" edit="0" delete="0">
-                <field name="folder_id"/>
-                <field name="parent_folder_id"/>
-                <field name="match_basis"/>
-                <button name="action_pick" string="Seleccionar" type="object" class="oe_highlight"/>
-            </tree>
-        </field>
-    </record>
-
-    <!-- WIZARD -->
-    <record id="view_dossier_assign_wizard_form" model="ir.ui.view">
-        <field name="name">dossier.assign.wizard.form</field>
-        <field name="model">dossier.assign.wizard</field>
-        <field name="arch" type="xml">
-            <form string="Asignar carpeta de dossier">
+            <form string="Dossier de calidad">
                 <sheet>
-                    <notebook>
-                        <page string="Asignación">
-                            <group>
-                                <field name="sale_order_id" readonly="1"/>
-                                <field name="dossier_type" widget="radio"/>
-                                <field name="dossier_key" readonly="1"/>
+                    <group>
+                        <field name="sale_order_id" readonly="1"/>
+                        <field name="quotation_id" options="{'no_create': True}"/>
+                    </group>
 
-                                <field name="mode" widget="radio"/>
+                    <group>
+                        <field name="contract_kind" widget="radio"/>
+                        <field name="principal_quotation_id"
+                               attrs="{'invisible':[('contract_kind','!=','adenda')], 'required':[('contract_kind','=','adenda')]}"
+                               options="{'no_create': True}"/>
+                    </group>
 
-                                <!-- sin domain aquí; lo aplica el onchange en Python -->
-                                <field name="existing_folder_id"
-                                       attrs="{'invisible':[('mode','!=','existing')], 'required':[('mode','=','existing')]}"
-                                       options="{'no_create': True}"/>
+                    <group>
+                        <field name="mode" widget="radio"/>
+                        <field name="existing_folder_id"
+                               attrs="{'invisible':[('mode','!=','existing')], 'required':[('mode','=','existing')]}"
+                               options="{'no_create': True}"/>
+                        <field name="new_folder_name" attrs="{'invisible':[('mode','!=','new')]}"/>
+                    </group>
 
-                                <field name="new_folder_name"
-                                       attrs="{'invisible':[('mode','!=','new')], 'required':[('mode','=','new')]}"
-                                       readonly="1"/>
-
-                                <field name="warning_msg" nolabel="1" readonly="1" attrs="{'invisible':[('warning_msg','=',False)]}"/>
-                                <field name="force_override" attrs="{'invisible':[('warning_msg','=',False)]}" groups="sid_projects_dossier.group_dossier_manager"/>
-
-                            </group>
-                        </page>
-
-                        <page string="Carpetas">
-                            <group>
-                                <field name="candidate_ids">
-                                    <tree string="Carpetas encontradas" create="0" edit="0" delete="0">
-                                        <field name="folder_id"/>
-                                        <field name="parent_folder_id"/>
-                                        <field name="match_basis"/>
-                                        <button name="action_pick" string="Seleccionar" type="object"
-                                                class="oe_highlight"/>
-                                    </tree>
-                                </field>
-                            </group>
-                        </page>
-                    </notebook>
+                    <group attrs="{'invisible':[('warning_message','=',False)]}">
+                        <field name="warning_message" readonly="1" nolabel="1"/>
+                    </group>
                 </sheet>
                 <footer>
                     <button string="Confirmar" type="object" name="action_confirm" class="btn-primary"/>
@@ -68,27 +39,26 @@
         </field>
     </record>
 
-    <!-- ACCIÓN -->
-    <record id="action_dossier_assign_wizard" model="ir.actions.act_window">
-        <field name="name">Asignar carpeta de dossier</field>
+    <!-- Action: Crear dossier -->
+    <record id="action_dossier_create_wizard" model="ir.actions.act_window">
+        <field name="name">Crear dossier</field>
         <field name="type">ir.actions.act_window</field>
-        <field name="res_model">dossier.assign.wizard</field>
+        <field name="res_model">sid.dossier.assign.wizard</field>
         <field name="view_mode">form</field>
-        <field name="view_id" ref="view_dossier_assign_wizard_form"/>
+        <field name="view_id" ref="view_sid_dossier_assign_wizard_form"/>
         <field name="target">new</field>
-        <!-- no context -->
+        <field name="context">{'default_mode': 'new'}</field>
     </record>
 
-    <!-- BOTÓN EN SALE.ORDER (header) -->
-    <record id="sale_order_form_inherit_dossier_button" model="ir.ui.view">
-        <field name="name">sale.order.form.dossier.button</field>
-        <field name="model">sale.order</field>
-        <field name="inherit_id" ref="sale.view_order_form"/>
-        <field name="arch" type="xml">
-            <xpath expr="//header" position="inside">
-                <button type="action" name="%(sid_projects_dossier.action_dossier_assign_wizard)d" string="Dossier" class="oe_highlight"/>
-            </xpath>
-        </field>
+    <!-- Action: Vincular dossier -->
+    <record id="action_dossier_link_wizard" model="ir.actions.act_window">
+        <field name="name">Vincular dossier</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">sid.dossier.assign.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_sid_dossier_assign_wizard_form"/>
+        <field name="target">new</field>
+        <field name="context">{'default_mode': 'existing'}</field>
     </record>
 
 </odoo>
