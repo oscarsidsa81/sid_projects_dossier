@@ -18,7 +18,8 @@
 
         # Views / menus
         'views/sid_projects_dossier_sales.xml',
-        'views/sid_projects_dossier_quotations.xml',
+        # Nota: la vista de sale.quotations se añadirá cuando tengamos el xmlid
+        # exacto del form heredado en vuestro entorno.
 
         # Window actions / menus
         'data/document_actions.xml',
