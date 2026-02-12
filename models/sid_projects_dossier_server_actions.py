@@ -82,7 +82,9 @@ def create_dossier_structure(env, workspace_parent, parent_facets_src=None, owne
 
     notificaciones = {'DOC', 'QA', 'OTROS', 'INSPECTOR'}
 
-    existing_by_name = {f.name: f for f in workspace_parent.child_folder_ids}
+    # Robust children lookup (some deployments don't expose `child_folder_ids` on documents.folder)
+    existing_children = Folder.search([('parent_folder_id', '=', workspace_parent.id)])
+    existing_by_name = {f.name: f for f in existing_children}
     created_top = []
 
     for fname, estados in child_folders:
@@ -107,7 +109,7 @@ def create_dossier_structure(env, workspace_parent, parent_facets_src=None, owne
 
         # Create state subfolders
         if fname not in folders_sin_estado:
-            existing_states = {c.name for c in folder.child_folder_ids}
+            existing_states = {c.name for c in Folder.search([('parent_folder_id', '=', folder.id)])}
             for estado in estados:
                 if estado not in existing_states:
                     Folder.create({
