@@ -71,15 +71,9 @@ class SaleQuotationsDossier(models.Model):
         return {
             'type': 'ir.actions.act_window',
             'name': _('Dossier'),
-            'res_model': 'documents.document',
-            'view_mode': 'tree,kanban',
-            'domain': [('folder_id', 'child_of', folder.id)],
-            'context': {
-                'default_folder_id': folder.id,
-                'searchpanel_default_folder_id': folder.id,
-                'searchpanel_default_folder_id_domain': [('folder_id', 'child_of', folder.id)],
-                'group_by': ['folder_id'],
-            },
+            'res_model': 'documents.folder',
+            'view_mode': 'form',
+            'res_id': folder.id,
             'target': 'current',
         }
 

@@ -18,8 +18,7 @@
 
         # Views / menus
         'views/sid_projects_dossier_sales.xml',
-        # Nota: la vista de sale.quotations se añadirá cuando tengamos el xmlid
-        # exacto del form heredado en vuestro entorno.
+        'views/sid_projects_dossier_quotations.xml',
 
         # Window actions / menus
         'data/document_actions.xml',
@@ -29,6 +28,5 @@
     'application': False,
 
     # Vincular estructura existente: "Dossieres de calidad" (root) y años
-    'pre_init_hook': 'pre_init_bind_quality_dossiers_folders',
     'post_init_hook': 'post_init_bind_quality_dossiers_folders',
 }

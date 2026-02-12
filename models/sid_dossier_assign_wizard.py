@@ -5,9 +5,6 @@ from datetime import date
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
 
-# Reutilizamos la lógica histórica de creación de estructura de dossier
-from .sid_projects_dossier_server_actions import create_dossier_structure
-
 
 class SidDossierAssignWizard(models.TransientModel):
     _name = 'sid.dossier.assign.wizard'
@@ -186,37 +183,25 @@ class SidDossierAssignWizard(models.TransientModel):
         Folder = self.env['documents.folder'].sudo()
 
         if self.mode == 'existing':
-            # Vincular una carpeta ya existente (puede pertenecer a cualquier año)
             if not self.existing_folder_id:
                 raise UserError(_('Seleccione una carpeta de dossier existente.'))
-            dossier_folder = self.existing_folder_id
-            root_q.sudo().write({'dossier_folder_id': dossier_folder.id})
-            # Asegurar estructura mínima (idempotente) sin tocar el año
-            create_dossier_structure(self.env, dossier_folder)
+            root_q.sudo().write({'dossier_folder_id': self.existing_folder_id.id})
 
         else:
-            # Crear (o reutilizar) el dossier, PERO si ya existe uno vinculado al contrato principal,
-            # no generamos uno nuevo en el año actual.
-            if root_q.dossier_folder_id:
-                dossier_folder = root_q.dossier_folder_id
-                create_dossier_structure(self.env, dossier_folder)
-            else:
-                year_folder = self._ensure_year_folder(date.today().year)
-                dossier_name = (self.new_folder_name or root_q.name or '').strip()
-                if not dossier_name:
-                    raise UserError(_('No se pudo determinar el nombre del dossier.'))
+            # Create or reuse dossier folder under current year
+            year_folder = self._ensure_year_folder(date.today().year)
+            dossier_name = (self.new_folder_name or root_q.name or '').strip()
+            if not dossier_name:
+                raise UserError(_('No se pudo determinar el nombre del dossier.'))
 
-                dossier_folder = Folder.search([
-                    ('parent_folder_id', '=', year_folder.id),
-                    ('name', '=', dossier_name),
-                ], limit=1)
-                if not dossier_folder:
-                    dossier_folder = Folder.create({'name': dossier_name, 'parent_folder_id': year_folder.id})
+            dossier_folder = Folder.search([
+                ('parent_folder_id', '=', year_folder.id),
+                ('name', '=', dossier_name),
+            ], limit=1)
+            if not dossier_folder:
+                dossier_folder = Folder.create({'name': dossier_name, 'parent_folder_id': year_folder.id})
 
-                # Crear subcarpetas estándar bajo el dossier (contratos, certificados, etc.)
-                create_dossier_structure(self.env, dossier_folder)
-
-                root_q.sudo().write({'dossier_folder_id': dossier_folder.id})
+            root_q.sudo().write({'dossier_folder_id': dossier_folder.id})
 
         # Optional: chatter note (if mail.thread available)
         try:
