@@ -5,7 +5,7 @@
         <field name="name">dossier.assign.candidate.tree</field>
         <field name="model">dossier.assign.candidate</field>
         <field name="arch" type="xml">
-            <tree string="Sugerencias" editable="bottom">
+            <tree string="Carpetas encontradas" create="0" edit="0" delete="0">
                 <field name="folder_id"/>
                 <field name="parent_folder_id"/>
                 <field name="match_basis"/>
@@ -25,6 +25,9 @@
                         <page string="Asignación">
                             <group>
                                 <field name="sale_order_id" readonly="1"/>
+                                <field name="dossier_type" widget="radio"/>
+                                <field name="dossier_key" readonly="1"/>
+
                                 <field name="mode" widget="radio"/>
 
                                 <!-- sin domain aquí; lo aplica el onchange en Python -->
@@ -33,7 +36,8 @@
                                        options="{'no_create': True}"/>
 
                                 <field name="new_folder_name"
-                                       attrs="{'invisible':[('mode','!=','new')], 'required':[('mode','=','new')]}"/>
+                                       attrs="{'invisible':[('mode','!=','new')], 'required':[('mode','=','new')]}"
+                                       readonly="1"/>
 
                                 <field name="warning_msg" nolabel="1" readonly="1" attrs="{'invisible':[('warning_msg','=',False)]}"/>
                                 <field name="force_override" attrs="{'invisible':[('warning_msg','=',False)]}" groups="sid_projects_dossier.group_dossier_manager"/>
@@ -41,10 +45,10 @@
                             </group>
                         </page>
 
-                        <page string="Sugerencias">
+                        <page string="Carpetas">
                             <group>
                                 <field name="candidate_ids">
-                                    <tree string="Carpetas candidatas">
+                                    <tree string="Carpetas encontradas" create="0" edit="0" delete="0">
                                         <field name="folder_id"/>
                                         <field name="parent_folder_id"/>
                                         <field name="match_basis"/>
