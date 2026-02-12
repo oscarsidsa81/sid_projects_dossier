@@ -51,7 +51,7 @@ def _bind_existing_folders(cr):
     IMPORTANT: this is used by *pre_init_hook* so XML data can safely ref the xml_ids.
     """
     env = api.Environment(cr, SUPERUSER_ID, {})
-    Folder = env["documents.folder"].sudo()
+    Folder = env["documents.folder"].sudo().with_context(active_test=False)
     module = "sid_projects_dossier"
 
     root = _pick_root_folder(Folder)
