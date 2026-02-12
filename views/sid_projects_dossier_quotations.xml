@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!--
+            Nota:
+            - Este fichero existe para evitar errores de instalación/upgrade cuando el
+              manifest lo referencia.
+            - La personalización de la vista de sale.quotations depende del xmlid real
+              del form/tree en vuestro entorno (módulo propietario).
+            - Una vez confirmado el xmlid, aquí se puede añadir un inherit_id con xpaths
+              para insertar:
+                * campo dossier_folder_id
+                * campo dossier_status
+                * botón "Ver dossier" (object action_view_dossier)
+                * botón "Asignar/Crear dossier" (action wizard)
+        -->
+    </data>
+</odoo>

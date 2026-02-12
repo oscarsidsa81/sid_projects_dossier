@@ -71,12 +71,21 @@ class SaleOrderDossier(models.Model):
         self.ensure_one()
         if not self.dossier_folder_id:
             return self.action_open_dossier_wizard_link()
+        folder = self.dossier_folder_id
+        # Abrir DOCUMENTOS (documents.document) filtrados por la carpeta del dossier.
+        # Usamos child_of para incluir subcarpetas.
         return {
+            'name': 'Documentos',
             'type': 'ir.actions.act_window',
-            'name': self.dossier_folder_id.display_name,
-            'res_model': 'documents.folder',
-            'view_mode': 'form',
-            'res_id': self.dossier_folder_id.id,
+            'res_model': 'documents.document',
+            'view_mode': 'tree,kanban,form',
+            'domain': [('folder_id', 'child_of', folder.id)],
+            'context': {
+                'default_folder_id': folder.id,
+                'searchpanel_default_folder_id': folder.id,
+                'searchpanel_default_folder_id_domain': [('folder_id', 'child_of', folder.id)],
+                'group_by': 'folder_id',
+            },
             'target': 'current',
         }
 

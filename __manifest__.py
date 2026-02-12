@@ -28,5 +28,6 @@
     'application': False,
 
     # Vincular estructura existente: "Dossieres de calidad" (root) y años
+    'pre_init_hook': 'pre_init_bind_quality_dossiers_folders',
     'post_init_hook': 'post_init_bind_quality_dossiers_folders',
 }

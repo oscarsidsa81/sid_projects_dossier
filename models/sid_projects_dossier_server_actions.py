@@ -8,6 +8,125 @@ from .sid_dossier_similarity import _scoped_domain, _candidate_basenames, _get_r
 
 _logger = logging.getLogger ( __name__ )
 
+
+def create_dossier_structure(env, workspace_parent, parent_facets_src=None, owner_id=None):
+    """Create the standard dossier structure (level 3 folders) under a dossier folder.
+
+    Parameters
+    ----------
+    env: odoo.api.Environment
+    workspace_parent: documents.folder record (the dossier folder, parent_level=2)
+    parent_facets_src: optional documents.folder record used as template for facets
+        (when you want to copy tag facets from another folder)
+    owner_id: optional res.users id to assign as folder owner
+    """
+    if not workspace_parent:
+        return False
+
+    Folder = env['documents.folder'].sudo()
+    Request = env['documents.request_wizard'].sudo() if 'documents.request_wizard' in env else None
+
+    def _norm(txt):
+        return re.sub(r"[^a-z0-9]+", "", (txt or "").lower())
+
+    def _is_similar(a, b, threshold=0.55):
+        """Very small similarity helper (no fuzzy libs)."""
+        na, nb = _norm(a), _norm(b)
+        if not na or not nb:
+            return False
+        if na in nb or nb in na:
+            return True
+        return SequenceMatcher(None, na, nb).ratio() >= threshold
+
+    # 0) owner
+    if owner_id and hasattr(workspace_parent, 'owner_id'):
+        try:
+            workspace_parent.write({'owner_id': owner_id})
+        except Exception:
+            _logger.exception("Could not set owner_id on dossier folder %s", workspace_parent.id)
+
+    # 1) Create the same sub-structure that action_create_dossier_folders builds
+    child_folders = [
+        ('DOC', ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('QA',  ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('OTROS', ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('ENVIADO CLIENTE', []),
+        ('DISTRIBUCIÓN', []),
+        ('CERTIFICADOS MAT', ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('CERTIFICADOS INV', ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('CERTIFICADOS INSP', ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('CERTIFICADOS FAB', ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('CERTIFICADOS COAT', ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('Trazabilidad', []),
+        ('PRUEBA PRESIÓN', []),
+        ('MARCADO', []),
+        ('COMUNICACIÓN CON CLIENTE', []),
+        ('NOTIFICACIONES', []),
+        ('PLANO IF', []),
+        ('OT', []),
+        ('DOCUMENTACIÓN CERTIFICADOS', []),
+        ('INSPECCIÓN', []),
+        ('INSPECTOR', ['RECIBIDO', 'PROCESO', 'ENVIADO', 'OK']),
+        ('ENSAYOS', []),
+        ('PINTURA', []),
+        ('LISTA DE PACKING', []),
+        ('DOSSIER FINAL', []),
+    ]
+
+    folders_sin_estado = {
+        'ENVIADO CLIENTE', 'DISTRIBUCIÓN', 'Trazabilidad', 'PRUEBA PRESIÓN', 'MARCADO',
+        'COMUNICACIÓN CON CLIENTE', 'NOTIFICACIONES', 'PLANO IF', 'OT',
+        'DOCUMENTACIÓN CERTIFICADOS', 'INSPECCIÓN', 'ENSAYOS', 'PINTURA',
+        'LISTA DE PACKING', 'DOSSIER FINAL'
+    }
+
+    notificaciones = {'DOC', 'QA', 'OTROS', 'INSPECTOR'}
+
+    existing_by_name = {f.name: f for f in workspace_parent.child_folder_ids}
+    created_top = []
+
+    for fname, estados in child_folders:
+        folder = existing_by_name.get(fname)
+        if not folder:
+            folder = Folder.create({
+                'name': fname,
+                'parent_folder_id': workspace_parent.id,
+            })
+            created_top.append(folder)
+
+        # Copy facets from parent template folder (heuristic match)
+        if parent_facets_src and hasattr(parent_facets_src, 'facet_ids') and hasattr(folder, 'facet_ids'):
+            try:
+                matching_facets = parent_facets_src.facet_ids.filtered(
+                    lambda f: _is_similar(f.name, fname)
+                )
+                if matching_facets:
+                    folder.write({'facet_ids': [(6, 0, matching_facets.ids)]})
+            except Exception:
+                _logger.exception("Could not assign facets to %s", folder.id)
+
+        # Create state subfolders
+        if fname not in folders_sin_estado:
+            existing_states = {c.name for c in folder.child_folder_ids}
+            for estado in estados:
+                if estado not in existing_states:
+                    Folder.create({
+                        'name': estado,
+                        'parent_folder_id': folder.id,
+                    })
+
+        # Create notifications request
+        if Request and fname in notificaciones:
+            try:
+                Request.create({
+                    'name': _('Solicitar %s') % fname,
+                    'folder_id': folder.id,
+                })
+            except Exception:
+                _logger.exception("Could not create request wizard for folder %s", folder.id)
+
+    return created_top
+
 # Separador para trocear códigos en partes alfanuméricas (p.ej. 'KLV-682-03' -> ['KLV','682','03'])
 SEP = re.compile ( r'[^A-Za-z0-9]+' )
 
