@@ -174,6 +174,12 @@ class SidDossierAssignWizard(models.TransientModel):
 
     def action_confirm(self):
         self.ensure_one()
+        # Si el wizard se abre desde sale.order y por algún motivo no llega
+        # default_quotation_id (o el related no estaba cargado), intentamos
+        # derivarlo desde el propio pedido.
+        if not self.quotation_id and self.sale_order_id and getattr(self.sale_order_id, 'quotations_id', False):
+            self.quotation_id = self.sale_order_id.quotations_id
+
         if not self.quotation_id:
             raise UserError(_('Seleccione un presupuesto/contrato.'))
 
