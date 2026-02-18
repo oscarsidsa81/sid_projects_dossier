@@ -55,16 +55,10 @@
                 <xpath expr="//form/sheet" position="before">
                     <!--    <br/> -->
                     <span>
-                        <button class="btn-info" icon="fa-plus" name="action_open_dossier_wizard_create"
+                        <button class="btn-info" icon="fa-folder-open" name="action_open_dossier_wizard"
                                 type="object"
                                 groups="sid_projects_dossier.group_dossier_manager,sales_team.group_sale_manager"
-                                string="Crear Dossier"/>
-                    </span>
-                    <span>
-                        <button class="btn-info" icon="fa-link" name="action_open_dossier_wizard_link"
-                                groups="sid_projects_dossier.group_dossier_manager,sales_team.group_sale_manager"
-                                type="object"
-                                string="Vincular Dossier"/>
+                                string="Dossier"/>
                     </span>
                     <span>
                         <button class="btn-info" icon="fa-book" name="action_view_dossier"
