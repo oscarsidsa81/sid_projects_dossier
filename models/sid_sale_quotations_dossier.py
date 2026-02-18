@@ -19,8 +19,31 @@ class SaleQuotationsDossier(models.Model):
 
     dossier_folder_id = fields.Many2one(
         comodel_name='documents.folder',
-        string='Dossier',
-        help='Carpeta (nivel 2) donde vive el dossier del contrato principal.',
+        string='Dossier (oferta)',
+        help=(
+            'Carpeta del dossier asociada a ESTA oferta (sale.quotations). '
+            'En el contrato principal este campo apunta a la carpeta principal. '
+            'En una adenda puede estar vacío (usa el dossier principal) o apuntar '
+            'a una carpeta propia si se decide que la adenda tenga su propio dossier.'
+        ),
+    )
+
+    principal_dossier_folder_id = fields.Many2one(
+        comodel_name='documents.folder',
+        string='Dossier (principal)',
+        related='dossier_root_id.dossier_folder_id',
+        store=True,
+        readonly=True,
+        help='Carpeta del dossier del contrato principal (root de la jerarquía).',
+    )
+
+    dossier_effective_folder_id = fields.Many2one(
+        comodel_name='documents.folder',
+        string='Dossier (efectivo)',
+        compute='_compute_dossier_effective_folder_id',
+        store=True,
+        readonly=True,
+        help='Dossier a utilizar: el propio de la oferta si existe; si no, el del contrato principal.',
     )
 
     dossier_state = fields.Selection(
@@ -52,11 +75,15 @@ class SaleQuotationsDossier(models.Model):
                 root = root.parent_id
             q.dossier_root_id = root
 
-    @api.depends('dossier_folder_id', 'dossier_root_id', 'dossier_root_id.dossier_folder_id')
+    @api.depends('dossier_effective_folder_id')
     def _compute_has_dossier(self):
         for q in self:
-            root = q.dossier_root_id or q
-            q.has_dossier = bool(root.dossier_folder_id)
+            q.has_dossier = bool(q.dossier_effective_folder_id)
+
+    @api.depends('dossier_folder_id', 'principal_dossier_folder_id')
+    def _compute_dossier_effective_folder_id(self):
+        for q in self:
+            q.dossier_effective_folder_id = q.dossier_folder_id or q.principal_dossier_folder_id
 
     # ---------------------------------------------------------------------
     # Actions
@@ -64,8 +91,7 @@ class SaleQuotationsDossier(models.Model):
 
     def action_view_dossier(self):
         self.ensure_one()
-        root = self.dossier_root_id or self
-        folder = root.dossier_folder_id
+        folder = self.dossier_effective_folder_id
         if not folder:
             raise UserError(_('Este contrato no tiene dossier asignado. Use "Crear dossier" o "Vincular dossier".'))
         return {
@@ -122,14 +148,22 @@ class SaleOrderDossierRelated(models.Model):
     dossier_folder_id = fields.Many2one(
         comodel_name='documents.folder',
         string='Dossier',
-        related='quotations_id.dossier_root_id.dossier_folder_id',
+        related='quotations_id.dossier_effective_folder_id',
+        store=True,
+        readonly=True,
+    )
+
+    principal_dossier_folder_id = fields.Many2one(
+        comodel_name='documents.folder',
+        string='Dossier (principal)',
+        related='quotations_id.principal_dossier_folder_id',
         store=True,
         readonly=True,
     )
 
     dossier_asignado = fields.Char(
         string='Dossier asignado',
-        related='quotations_id.dossier_root_id.name',
+        compute='_compute_dossier_asignado',
         store=True,
         readonly=True,
     )
@@ -145,6 +179,17 @@ class SaleOrderDossierRelated(models.Model):
     def _compute_tiene_dossier(self):
         for so in self:
             so.tiene_dossier = bool(so.dossier_folder_id)
+
+    @api.depends('quotations_id', 'quotations_id.parent_id', 'quotations_id.dossier_folder_id', 'quotations_id.dossier_root_id')
+    def _compute_dossier_asignado(self):
+        for so in self:
+            q = so.quotations_id
+            if not q:
+                so.dossier_asignado = False
+                continue
+            # Si la oferta tiene dossier propio (ej. adenda con estructura propia), mostramos su nombre.
+            # Si no, mostramos el nombre del contrato principal.
+            so.dossier_asignado = q.name if q.dossier_folder_id else (q.dossier_root_id.name if q.dossier_root_id else q.name)
 
     def action_view_dossier(self):
         self.ensure_one()

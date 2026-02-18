@@ -10,9 +10,9 @@ class SaleOrderDossier(models.Model):
     dossier_folder_id = fields.Many2one(
         comodel_name='documents.folder',
         string='Dossier (carpeta)',
+        related='quotations_id.dossier_folder_id',
         store=True,
         readonly=True,
-        compute='_compute_dossier_folder_id',
     )
     dossier_asignado = fields.Char(
         string='Dossier asignado',
@@ -26,11 +26,6 @@ class SaleOrderDossier(models.Model):
         store=True,
         readonly=True,
     )
-
-    @api.depends('quotations_id', 'quotations_id.dossier_folder_id')
-    def _compute_dossier_folder_id(self):
-        for so in self:
-            so.dossier_folder_id = so.quotations_id.dossier_folder_id if so.quotations_id else False
 
     @api.depends('dossier_folder_id')
     def _compute_tiene_dossier(self):

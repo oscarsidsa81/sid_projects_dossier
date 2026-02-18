@@ -23,6 +23,16 @@ class SidDossierAssignWizard(models.TransientModel):
         default='principal',
     )
 
+    addenda_policy = fields.Selection(
+        selection=[
+            ('use_principal', 'Usar dossier del contrato principal'),
+            ('own_dossier', 'Crear/vincular dossier propio para la adenda'),
+        ],
+        string='Política de dossier (adenda)',
+        default='use_principal',
+        help='Para adendas: permite decidir si se reutiliza el dossier del contrato principal o si la adenda tiene su propio dossier.',
+    )
+
     mode = fields.Selection(
         selection=[('new', 'Crear dossier nuevo'), ('existing', 'Vincular dossier existente')],
         string='Operación',
@@ -174,60 +184,90 @@ class SidDossierAssignWizard(models.TransientModel):
 
     def action_confirm(self):
         self.ensure_one()
-        # Si el wizard se abre desde sale.order y por algún motivo no llega
-        # default_quotation_id (o el related no estaba cargado), intentamos
-        # derivarlo desde el propio pedido.
-        if not self.quotation_id and self.sale_order_id and getattr(self.sale_order_id, 'quotations_id', False):
-            self.quotation_id = self.sale_order_id.quotations_id
-
         if not self.quotation_id:
             raise UserError(_('Seleccione un presupuesto/contrato.'))
 
+        # 1) Identificar el contrato principal (root_q)
         root_q = self.quotation_id.dossier_root_id or self.quotation_id
         if self.contract_kind == 'adenda':
             if not self.principal_quotation_id:
                 raise UserError(_('Seleccione el contrato principal.'))
             root_q = self.principal_quotation_id.dossier_root_id or self.principal_quotation_id
 
+        # 2) Sobre qué oferta escribimos el vínculo:
+        #    - Contrato principal: siempre en root_q
+        #    - Adenda: puede heredar el dossier del contrato principal (no escribimos en la adenda)
+        #      o tener su propio dossier (escribimos en la adenda)
+        target_q = root_q
+        if self.contract_kind == 'adenda' and self.addenda_policy == 'own_dossier':
+            target_q = self.quotation_id
+
         Folder = self.env['documents.folder'].sudo()
+
+        def _find_existing_dossier_any_year(name):
+            """Busca un dossier por nombre bajo cualquier año (evita duplicar 2025/2026)."""
+            name = (name or '').strip()
+            if not name:
+                return Folder
+
+            root = self._get_root_folder()
+            # Carpeta de año: hija directa del root
+            candidates = Folder.search([
+                ('parent_folder_id.parent_folder_id', '=', root.id),
+                ('name', '=', name),
+            ])
+            if not candidates:
+                return Folder
+
+            # Preferimos el año más antiguo (p.ej. si existe en 2025 no crear en 2026)
+            def _year_of(f):
+                try:
+                    return int((f.parent_folder_id.name or '9999').strip())
+                except Exception:
+                    return 9999
+            return candidates.sorted(key=_year_of)[:1]
 
         if self.mode == 'existing':
             # Vincular una carpeta ya existente (puede pertenecer a cualquier año)
             if not self.existing_folder_id:
                 raise UserError(_('Seleccione una carpeta de dossier existente.'))
             dossier_folder = self.existing_folder_id
-            root_q.sudo().write({'dossier_folder_id': dossier_folder.id})
+            target_q.sudo().write({'dossier_folder_id': dossier_folder.id})
             # Asegurar estructura mínima (idempotente) sin tocar el año
             create_dossier_structure(self.env, dossier_folder)
 
         else:
-            # Crear (o reutilizar) el dossier, PERO si ya existe uno vinculado al contrato principal,
-            # no generamos uno nuevo en el año actual.
-            if root_q.dossier_folder_id:
-                dossier_folder = root_q.dossier_folder_id
+            # Crear (o reutilizar) el dossier.
+            # - Si ya existe en target_q => reusar
+            # - Si no existe, pero ya hay una carpeta con ese nombre en otro año => reusar
+            # - Si no existe => crear bajo el año actual
+            if target_q.dossier_folder_id:
+                dossier_folder = target_q.dossier_folder_id
                 create_dossier_structure(self.env, dossier_folder)
             else:
                 year_folder = self._ensure_year_folder(date.today().year)
-                dossier_name = (self.new_folder_name or root_q.name or '').strip()
+                dossier_name = (self.new_folder_name or target_q.name or '').strip()
                 if not dossier_name:
                     raise UserError(_('No se pudo determinar el nombre del dossier.'))
 
-                dossier_folder = Folder.search([
-                    ('parent_folder_id', '=', year_folder.id),
-                    ('name', '=', dossier_name),
-                ], limit=1)
+                dossier_folder = _find_existing_dossier_any_year(dossier_name)
+                if not dossier_folder:
+                    dossier_folder = Folder.search([
+                        ('parent_folder_id', '=', year_folder.id),
+                        ('name', '=', dossier_name),
+                    ], limit=1)
                 if not dossier_folder:
                     dossier_folder = Folder.create({'name': dossier_name, 'parent_folder_id': year_folder.id})
 
                 # Crear subcarpetas estándar bajo el dossier (contratos, certificados, etc.)
                 create_dossier_structure(self.env, dossier_folder)
 
-                root_q.sudo().write({'dossier_folder_id': dossier_folder.id})
+                target_q.sudo().write({'dossier_folder_id': dossier_folder.id})
 
         # Optional: chatter note (if mail.thread available)
         try:
-            msg = _('Dossier asignado: %s') % (root_q.dossier_folder_id.display_name)
-            root_q.message_post(body=msg)
+            msg = _('Dossier asignado: %s') % (target_q.dossier_folder_id.display_name)
+            target_q.message_post(body=msg)
         except Exception:
             pass
 
