@@ -16,7 +16,7 @@
                         <field name="quotation_is_child" invisible="1"/>
                         <field name="contract_kind" widget="radio"
                                attrs="{'invisible':[('quotation_is_child','=',True)]}"/>
-                        <label string="Tipo" attrs="{'invisible':[('quotation_is_child','=',False)]}"/>
+                        <span class="o_form_label" attrs="{'invisible':[('quotation_is_child','=',False)]}">Tipo</span>
                         <div attrs="{'invisible':[('quotation_is_child','=',False)]}">
                             <span>Adenda (definido automáticamente por la jerarquía del presupuesto/contrato)</span>
                         </div>
