@@ -3,11 +3,44 @@
 from datetime import date
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 
 
 class SaleQuotationsDossier(models.Model):
     _inherit = 'sale.quotations'
+
+    def _get_parent_id_domain(self):
+        """Limita parent_id a contratos principales del mismo cliente."""
+        self.ensure_one()
+        domain = [('id', '!=', self.id), ('parent_id', '=', False)]
+
+        if 'partner_id' in self._fields and self.partner_id:
+            domain.append(('partner_id', '=', self.partner_id.id))
+            return domain
+
+        if 'sale_order_id' in self._fields and self.sale_order_id and self.sale_order_id.partner_id:
+            partner = self.sale_order_id.partner_id
+            sale_orders = self.env['sale.order'].search([('partner_id', '=', partner.id)]).ids
+            domain.append(('sale_order_id', 'in', sale_orders or [0]))
+
+        return domain
+
+    @api.onchange('partner_id')
+    def _onchange_parent_partner_filter(self):
+        self.ensure_one()
+        return {'domain': {'parent_id': self._get_parent_id_domain()}}
+
+    @api.constrains('parent_id', 'partner_id')
+    def _check_parent_partner_consistency(self):
+        for quotation in self:
+            if not quotation.parent_id:
+                continue
+
+            allowed_parent_ids = quotation.search(quotation._get_parent_id_domain()).ids
+            if quotation.parent_id.id not in allowed_parent_ids:
+                raise ValidationError(_(
+                    'El contrato principal debe pertenecer al mismo cliente que el pedido/contrato actual.'
+                ))
 
     dossier_root_id = fields.Many2one(
         comodel_name='sale.quotations',
@@ -122,6 +155,23 @@ class SaleQuotationsDossier(models.Model):
                 'default_quotation_id': self.id,
                 'default_contract_kind': 'principal' if not self.parent_id else 'adenda',
                 'default_mode': 'new',
+            },
+        }
+
+    def action_open_dossier_wizard(self):
+        self.ensure_one()
+        default_mode = 'existing' if self.dossier_effective_folder_id else 'new'
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Dossier'),
+            'res_model': 'sid.dossier.assign.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_sale_order_id': False,
+                'default_quotation_id': self.id,
+                'default_contract_kind': 'principal' if not self.parent_id else 'adenda',
+                'default_mode': default_mode,
             },
         }
 
@@ -240,6 +290,23 @@ class SaleOrderDossierRelated(models.Model):
                 'default_quotation_id': self.quotations_id.id if self.quotations_id else False,
                 'default_contract_kind': 'principal' if (self.quotations_id and not self.quotations_id.parent_id) else 'adenda',
                 'default_mode': 'new',
+            },
+        }
+
+    def action_open_dossier_wizard(self):
+        self.ensure_one()
+        default_mode = 'existing' if self.dossier_folder_id else 'new'
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Dossier'),
+            'res_model': 'sid.dossier.assign.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_sale_order_id': self.id,
+                'default_quotation_id': self.quotations_id.id if self.quotations_id else False,
+                'default_contract_kind': 'principal' if (self.quotations_id and not self.quotations_id.parent_id) else 'adenda',
+                'default_mode': default_mode,
             },
         }
 

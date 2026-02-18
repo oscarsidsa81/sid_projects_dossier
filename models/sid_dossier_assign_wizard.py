@@ -14,7 +14,7 @@ class SidDossierAssignWizard(models.TransientModel):
     _description = 'Crear/Vincular dossier de calidad'
 
     sale_order_id = fields.Many2one('sale.order', string='Pedido', readonly=True)
-    quotation_id = fields.Many2one('sale.quotations', string='Presupuesto/Contrato', required=True)
+    quotation_id = fields.Many2one('sale.quotations', string='Presupuesto/Contrato', required=True, readonly=True)
     quotation_is_child = fields.Boolean(
         string='Es adenda (por jerarquía)',
         compute='_compute_quotation_is_child',
@@ -49,6 +49,7 @@ class SidDossierAssignWizard(models.TransientModel):
         'sale.quotations',
         string='Contrato principal',
         domain="[('parent_id','=',False)]",
+        readonly=True,
     )
 
     existing_folder_id = fields.Many2one(
