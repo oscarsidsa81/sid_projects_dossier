@@ -9,7 +9,7 @@
                 <sheet>
                     <group>
                         <field name="sale_order_id" readonly="1"/>
-                        <field name="quotation_id" options="{'no_create': True}"/>
+                        <field name="quotation_id" readonly="1" options="{'no_create': True}"/>
                     </group>
 
                     <group>
@@ -23,6 +23,7 @@
                         <field name="addenda_policy" widget="radio"
                                attrs="{'invisible':[('contract_kind','!=','adenda')]}"/>
                         <field name="principal_quotation_id"
+                               readonly="1"
                                attrs="{'invisible':[('contract_kind','!=','adenda')], 'required':[('contract_kind','=','adenda')]}"
                                options="{'no_create': True}"/>
                     </group>
