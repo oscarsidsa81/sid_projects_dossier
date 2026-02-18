@@ -61,9 +61,16 @@ class SidDossierAssignWizard(models.TransientModel):
     # ---------------------------------------------------------------------
 
     def _get_root_folder(self):
-        root = self.env.ref('sid_projects_dossier.folder_root_dossieres_calidad', raise_if_not_found=False)
+        # XML-ID canónico gestionado por hooks/datos del módulo.
+        root = self.env.ref('sid_projects_dossier.sid_workspace_quality_dossiers', raise_if_not_found=False)
         if root:
             return root
+
+        # Retrocompatibilidad: instalaciones antiguas pudieron usar este XML-ID.
+        legacy_root = self.env.ref('sid_projects_dossier.folder_root_dossieres_calidad', raise_if_not_found=False)
+        if legacy_root:
+            return legacy_root
+
         # Fallback by name
         return self.env['documents.folder'].sudo().search([
             ('name', '=', 'Dossieres de calidad'),
