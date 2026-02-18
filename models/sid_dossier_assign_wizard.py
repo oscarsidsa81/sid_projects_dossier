@@ -113,13 +113,16 @@ class SidDossierAssignWizard(models.TransientModel):
             q = self.env['sale.quotations'].browse(qid).exists()
             if q:
                 root = q.dossier_root_id or q
-                res['new_folder_name'] = root.name
                 # default contract_kind from relationship
                 res['contract_kind'] = 'principal' if not q.parent_id else 'adenda'
+                if res.get('contract_kind') == 'adenda' and res.get('addenda_policy') == 'own_dossier':
+                    res['new_folder_name'] = q.name
+                else:
+                    res['new_folder_name'] = root.name
 
                 if res.get('contract_kind') == 'adenda':
                     res['principal_quotation_id'] = root.id
-                    if root.dossier_folder_id:
+                    if res.get('addenda_policy') != 'own_dossier' and root.dossier_folder_id:
                         res['mode'] = 'existing'
                         res['existing_folder_id'] = root.dossier_folder_id.id
 
@@ -130,13 +133,14 @@ class SidDossierAssignWizard(models.TransientModel):
         if not self.quotation_id:
             return
         root = self.quotation_id.dossier_root_id or self.quotation_id
-        self.new_folder_name = root.name
         self.contract_kind = 'principal' if not self.quotation_id.parent_id else 'adenda'
         if self.contract_kind == 'adenda':
             self.principal_quotation_id = root
-            if root.dossier_folder_id:
+            if self.addenda_policy == 'use_principal' and root.dossier_folder_id:
                 self.mode = 'existing'
                 self.existing_folder_id = root.dossier_folder_id
+
+        self._apply_dossier_name_policy()
 
     @api.onchange('contract_kind')
     def _onchange_contract_kind(self):
@@ -145,9 +149,40 @@ class SidDossierAssignWizard(models.TransientModel):
         root = self.quotation_id.dossier_root_id or self.quotation_id
         if self.contract_kind == 'adenda':
             self.principal_quotation_id = root
+            if self.addenda_policy == 'use_principal' and root.dossier_folder_id:
+                self.mode = 'existing'
+                self.existing_folder_id = root.dossier_folder_id
+
+        self._apply_dossier_name_policy()
+
+    @api.onchange('addenda_policy')
+    def _onchange_addenda_policy(self):
+        if not self.quotation_id or self.contract_kind != 'adenda':
+            return
+
+        root = self.principal_quotation_id or self.quotation_id.dossier_root_id or self.quotation_id
+        if self.addenda_policy == 'use_principal':
             if root.dossier_folder_id:
                 self.mode = 'existing'
                 self.existing_folder_id = root.dossier_folder_id
+        else:
+            if self.mode == 'existing' and self.existing_folder_id == root.dossier_folder_id:
+                self.mode = 'new'
+                self.existing_folder_id = False
+
+        self._apply_dossier_name_policy()
+
+    def _apply_dossier_name_policy(self):
+        self.ensure_one()
+        if not self.quotation_id:
+            self.new_folder_name = False
+            return
+
+        root = self.quotation_id.dossier_root_id or self.quotation_id
+        if self.contract_kind == 'adenda' and self.addenda_policy == 'own_dossier':
+            self.new_folder_name = self.quotation_id.name
+        else:
+            self.new_folder_name = root.name
 
     @api.onchange('mode', 'existing_folder_id', 'principal_quotation_id', 'quotation_id')
     def _onchange_warnings(self):
