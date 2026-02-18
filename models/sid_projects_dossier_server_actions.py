@@ -77,6 +77,7 @@ def create_dossier_structure(env, workspace_parent_1):
         '12. Dossier Final',
         '13. Contrato',
         '14. KOM',
+        '15. Milestones',
     ]
     estados = ['Proveedor', 'Enviado', 'Comentarios', 'Rechazado', 'Aprobado']
     folders_sin_estado = [
