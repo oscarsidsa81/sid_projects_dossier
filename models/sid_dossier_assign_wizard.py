@@ -20,6 +20,11 @@ class SidDossierAssignWizard(models.TransientModel):
         compute='_compute_quotation_is_child',
         readonly=True,
     )
+    quotation_has_children = fields.Boolean(
+        string='Tiene adendas',
+        compute='_compute_quotation_has_children',
+        readonly=True,
+    )
 
     contract_kind = fields.Selection(
         selection=[('principal', 'Contrato principal'), ('adenda', 'Adenda')],
@@ -115,6 +120,11 @@ class SidDossierAssignWizard(models.TransientModel):
         for wizard in self:
             wizard.quotation_is_child = bool(wizard.quotation_id and wizard.quotation_id.parent_id)
 
+    @api.depends('quotation_id', 'quotation_id.child_ids')
+    def _compute_quotation_has_children(self):
+        for wizard in self:
+            wizard.quotation_has_children = bool(wizard.quotation_id and wizard.quotation_id.child_ids)
+
     @api.model
     def default_get(self, fields_list):
         res = super().default_get(fields_list)
@@ -133,7 +143,12 @@ class SidDossierAssignWizard(models.TransientModel):
 
                 if res.get('contract_kind') == 'adenda':
                     res['principal_quotation_id'] = root.id
-                    if res.get('addenda_policy') != 'own_dossier' and root.dossier_folder_id:
+
+                    # Si la adenda ya tiene dossier propio, priorizamos conservarlo por defecto.
+                    if q.dossier_folder_id:
+                        res['addenda_policy'] = 'own_dossier'
+                        res['new_folder_name'] = q.name
+                    elif res.get('addenda_policy') != 'own_dossier' and root.dossier_folder_id:
                         res['mode'] = 'existing'
                         res['existing_folder_id'] = root.dossier_folder_id.id
 
@@ -145,9 +160,15 @@ class SidDossierAssignWizard(models.TransientModel):
             return
         root = self.quotation_id.dossier_root_id or self.quotation_id
         self.contract_kind = 'principal' if not self.quotation_id.parent_id else 'adenda'
+        if not self.quotation_id.parent_id and not self.quotation_id.child_ids:
+            self.contract_kind = 'principal'
         if self.contract_kind == 'adenda':
             self.principal_quotation_id = root
-            if self.addenda_policy == 'use_principal' and root.dossier_folder_id:
+
+            # Si la adenda ya tiene dossier propio, no forzar vínculo al principal.
+            if self.quotation_id.dossier_folder_id:
+                self.addenda_policy = 'own_dossier'
+            elif self.addenda_policy == 'use_principal' and root.dossier_folder_id:
                 self.mode = 'existing'
                 self.existing_folder_id = root.dossier_folder_id
 
@@ -157,10 +178,19 @@ class SidDossierAssignWizard(models.TransientModel):
     def _onchange_contract_kind(self):
         if not self.quotation_id:
             return
+
+        if self.contract_kind == 'adenda' and not self.quotation_id.parent_id and not self.quotation_id.child_ids:
+            self.contract_kind = 'principal'
+            return
+
         root = self.quotation_id.dossier_root_id or self.quotation_id
         if self.contract_kind == 'adenda':
             self.principal_quotation_id = root
-            if self.addenda_policy == 'use_principal' and root.dossier_folder_id:
+
+            # Si la adenda ya tiene dossier propio, no forzar vínculo al principal.
+            if self.quotation_id.dossier_folder_id:
+                self.addenda_policy = 'own_dossier'
+            elif self.addenda_policy == 'use_principal' and root.dossier_folder_id:
                 self.mode = 'existing'
                 self.existing_folder_id = root.dossier_folder_id
 
@@ -190,7 +220,7 @@ class SidDossierAssignWizard(models.TransientModel):
             return
 
         root = self.quotation_id.dossier_root_id or self.quotation_id
-        if self.contract_kind == 'adenda' and self.addenda_policy == 'own_dossier':
+        if self.contract_kind == 'adenda' and (self.addenda_policy == 'own_dossier' or self.mode == 'new'):
             self.new_folder_name = self.quotation_id.name
         else:
             self.new_folder_name = root.name
@@ -243,6 +273,9 @@ class SidDossierAssignWizard(models.TransientModel):
         if self.quotation_id.parent_id and self.contract_kind != 'adenda':
             raise UserError(_('Esta oferta pertenece a una adenda. Seleccione el tipo "Adenda".'))
 
+        if self.contract_kind == 'adenda' and not self.quotation_id.parent_id and not self.quotation_id.child_ids:
+            raise UserError(_('Este contrato no tiene adendas hijas. Solo puede gestionarse como "Contrato principal".'))
+
         # 1) Identificar el contrato principal (root_q)
         root_q = self.quotation_id.dossier_root_id or self.quotation_id
         if self.contract_kind == 'adenda':
@@ -255,7 +288,9 @@ class SidDossierAssignWizard(models.TransientModel):
         #    - Adenda: puede heredar el dossier del contrato principal (no escribimos en la adenda)
         #      o tener su propio dossier (escribimos en la adenda)
         target_q = root_q
-        if self.contract_kind == 'adenda' and self.addenda_policy == 'own_dossier':
+        if self.contract_kind == 'adenda' and (self.addenda_policy == 'own_dossier' or self.mode == 'new'):
+            # En adendas, "Crear dossier nuevo" siempre opera sobre la adenda para
+            # evitar sobrescribir/revincular el dossier del contrato principal.
             target_q = self.quotation_id
 
         Folder = self.env['documents.folder'].sudo()
@@ -306,12 +341,19 @@ class SidDossierAssignWizard(models.TransientModel):
                 if not dossier_name:
                     raise UserError(_('No se pudo determinar el nombre del dossier.'))
 
-                dossier_folder = _find_existing_dossier_any_year(dossier_name)
-                if not dossier_folder:
-                    dossier_folder = Folder.search([
-                        ('parent_folder_id', '=', year_folder.id),
-                        ('name', '=', dossier_name),
-                    ], limit=1)
+                # Para adendas con política "dossier propio" debemos crear carpeta NUEVA.
+                # Si reusamos por nombre, una adenda puede terminar enlazada al dossier
+                # del principal cuando ambos comparten denominación.
+                force_new_folder = self.contract_kind == 'adenda' and self.addenda_policy == 'own_dossier'
+
+                dossier_folder = Folder
+                if not force_new_folder:
+                    dossier_folder = _find_existing_dossier_any_year(dossier_name)
+                    if not dossier_folder:
+                        dossier_folder = Folder.search([
+                            ('parent_folder_id', '=', year_folder.id),
+                            ('name', '=', dossier_name),
+                        ], limit=1)
                 if not dossier_folder:
                     dossier_folder = Folder.create({'name': dossier_name, 'parent_folder_id': year_folder.id})
 
