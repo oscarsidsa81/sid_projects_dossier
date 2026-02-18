@@ -15,6 +15,11 @@ class SidDossierAssignWizard(models.TransientModel):
 
     sale_order_id = fields.Many2one('sale.order', string='Pedido', readonly=True)
     quotation_id = fields.Many2one('sale.quotations', string='Presupuesto/Contrato', required=True)
+    quotation_is_child = fields.Boolean(
+        string='Es adenda (por jerarquía)',
+        compute='_compute_quotation_is_child',
+        readonly=True,
+    )
 
     contract_kind = fields.Selection(
         selection=[('principal', 'Contrato principal'), ('adenda', 'Adenda')],
@@ -103,6 +108,11 @@ class SidDossierAssignWizard(models.TransientModel):
     # ---------------------------------------------------------------------
     # Onchange / defaults
     # ---------------------------------------------------------------------
+
+    @api.depends('quotation_id', 'quotation_id.parent_id')
+    def _compute_quotation_is_child(self):
+        for wizard in self:
+            wizard.quotation_is_child = bool(wizard.quotation_id and wizard.quotation_id.parent_id)
 
     @api.model
     def default_get(self, fields_list):
@@ -228,6 +238,9 @@ class SidDossierAssignWizard(models.TransientModel):
         self.ensure_one()
         if not self.quotation_id:
             raise UserError(_('Seleccione un presupuesto/contrato.'))
+
+        if self.quotation_id.parent_id and self.contract_kind != 'adenda':
+            raise UserError(_('Esta oferta pertenece a una adenda. Seleccione el tipo "Adenda".'))
 
         # 1) Identificar el contrato principal (root_q)
         root_q = self.quotation_id.dossier_root_id or self.quotation_id

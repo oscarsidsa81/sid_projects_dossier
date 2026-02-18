@@ -13,7 +13,13 @@
                     </group>
 
                     <group>
-                        <field name="contract_kind" widget="radio"/>
+                        <field name="quotation_is_child" invisible="1"/>
+                        <field name="contract_kind" widget="radio"
+                               attrs="{'invisible':[('quotation_is_child','=',True)]}"/>
+                        <label string="Tipo" attrs="{'invisible':[('quotation_is_child','=',False)]}"/>
+                        <div attrs="{'invisible':[('quotation_is_child','=',False)]}">
+                            <span>Adenda (definido automáticamente por la jerarquía del presupuesto/contrato)</span>
+                        </div>
                         <field name="addenda_policy" widget="radio"
                                attrs="{'invisible':[('contract_kind','!=','adenda')]}"/>
                         <field name="principal_quotation_id"
