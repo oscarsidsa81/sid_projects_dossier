@@ -5,8 +5,6 @@ from datetime import date
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 
-from .sid_projects_dossier_server_actions import create_dossier_structure
-
 
 class SaleQuotationsDossier(models.Model):
     _inherit = 'sale.quotations'
@@ -129,7 +127,6 @@ class SaleQuotationsDossier(models.Model):
         folder = self.dossier_effective_folder_id
         if not folder:
             raise UserError(_('Este contrato no tiene dossier asignado. Use "Crear dossier" o "Vincular dossier".'))
-        create_dossier_structure(self.env, folder)
         return {
             'type': 'ir.actions.act_window',
             'name': _('Dossier'),
@@ -262,9 +259,6 @@ class SaleOrderDossierRelated(models.Model):
                     'default_mode': 'existing',
                 },
             }
-        # Completa la estructura faltante si el dossier fue creado de forma parcial.
-        create_dossier_structure(self.env, folder)
-
         # Open Documents view filtered to this folder (and children) and select it in the SearchPanel.
         return {
             'name': _('Document Folder'),
