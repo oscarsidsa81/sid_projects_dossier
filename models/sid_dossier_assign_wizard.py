@@ -136,10 +136,13 @@ class SidDossierAssignWizard(models.TransientModel):
                 root = q.dossier_root_id or q
                 # default contract_kind from relationship
                 res['contract_kind'] = 'principal' if not q.parent_id else 'adenda'
-                if res.get('contract_kind') == 'adenda' and res.get('addenda_policy') == 'own_dossier':
-                    res['new_folder_name'] = q.name
-                else:
-                    res['new_folder_name'] = root.name
+
+                # IMPORTANTE:
+                # El nombre por defecto del *nuevo* dossier debe ser siempre el de la quotation
+                # desde la que se lanza el asistente (sale.order.quotations_id.name), sea adenda
+                # o contrato principal. Si el usuario quiere reutilizar el dossier del principal,
+                # eso se gestiona con mode='existing' + existing_folder_id.
+                res['new_folder_name'] = q.name
 
                 if res.get('contract_kind') == 'adenda':
                     res['principal_quotation_id'] = root.id
@@ -346,16 +349,27 @@ class SidDossierAssignWizard(models.TransientModel):
                 # del principal cuando ambos comparten denominación.
                 force_new_folder = self.contract_kind == 'adenda' and self.addenda_policy == 'own_dossier'
 
+                existing_any_year = _find_existing_dossier_any_year(dossier_name)
+
+                # (A) Reutilización por nombre (si NO se fuerza creación)
                 dossier_folder = Folder
-                if not force_new_folder:
-                    dossier_folder = _find_existing_dossier_any_year(dossier_name)
-                    if not dossier_folder:
-                        dossier_folder = Folder.search([
-                            ('parent_folder_id', '=', year_folder.id),
-                            ('name', '=', dossier_name),
-                        ], limit=1)
+                if existing_any_year and not force_new_folder:
+                    dossier_folder = existing_any_year
+
+                # (B) Creación evitando duplicados (si se fuerza creación, p.ej. adenda con dossier propio)
                 if not dossier_folder:
-                    dossier_folder = Folder.create({'name': dossier_name, 'parent_folder_id': year_folder.id})
+                    unique_name = dossier_name
+                    if existing_any_year and force_new_folder:
+                        # Evitar crear carpetas con el mismo nombre en nivel 2 (bajo cualquier año).
+                        # Sufijo estable para diferenciar adendas.
+                        base = dossier_name
+                        unique_name = f"{base} (AD{target_q.id})"
+                        i = 2
+                        while _find_existing_dossier_any_year(unique_name):
+                            unique_name = f"{base} (AD{target_q.id}-{i})"
+                            i += 1
+
+                    dossier_folder = Folder.create({'name': unique_name, 'parent_folder_id': year_folder.id})
 
                 # Crear subcarpetas estándar bajo el dossier (contratos, certificados, etc.)
                 create_dossier_structure(self.env, dossier_folder)
