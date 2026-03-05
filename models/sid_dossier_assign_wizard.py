@@ -111,6 +111,19 @@ class SidDossierAssignWizard(models.TransientModel):
         ], limit=1)
         return other
 
+    def _sync_related_sale_orders(self, quotations):
+        """Fuerza recálculo inmediato en sale.order para refrescar campos store/related en UI."""
+        quotations = quotations.exists()
+        if not quotations:
+            return
+
+        sale_orders = quotations.mapped('sale_order_id').exists()
+        if not sale_orders:
+            return
+
+        # Escritura noop para invalidar caché/recompute de campos store en la misma transacción.
+        sale_orders.sudo().write({})
+
     # ---------------------------------------------------------------------
     # Onchange / defaults
     # ---------------------------------------------------------------------
@@ -327,6 +340,11 @@ class SidDossierAssignWizard(models.TransientModel):
                 raise UserError(_('Seleccione una carpeta de dossier existente.'))
             dossier_folder = self.existing_folder_id
             target_q.sudo().write({'dossier_folder_id': dossier_folder.id})
+
+            # Si la adenda pasa a usar dossier del principal, limpiar dossier propio previo.
+            if self.contract_kind == 'adenda' and self.addenda_policy == 'use_principal':
+                self.quotation_id.sudo().write({'dossier_folder_id': False})
+
             # Asegurar estructura mínima (idempotente) sin tocar el año
             create_dossier_structure(self.env, dossier_folder)
 
@@ -372,6 +390,13 @@ class SidDossierAssignWizard(models.TransientModel):
 
                 target_q.sudo().write({'dossier_folder_id': dossier_folder.id})
 
+                # Si se eligió reutilizar dossier principal desde una adenda, eliminar vínculo propio.
+                if self.contract_kind == 'adenda' and self.addenda_policy == 'use_principal':
+                    self.quotation_id.sudo().write({'dossier_folder_id': False})
+
+        # Refrescar sale.order relacionado para que dossier_folder_id/dossier_asignado se vean al cerrar wizard.
+        self._sync_related_sale_orders(target_q | self.quotation_id)
+
         # Optional: chatter note (if mail.thread available)
         try:
             msg = _('Dossier asignado: %s') % (target_q.dossier_folder_id.display_name)
@@ -379,4 +404,4 @@ class SidDossierAssignWizard(models.TransientModel):
         except Exception:
             pass
 
-        return {'type': 'ir.actions.act_window_close'}
+        return {'type': 'ir.actions.client', 'tag': 'reload'}
