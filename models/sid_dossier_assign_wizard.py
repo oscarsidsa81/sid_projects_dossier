@@ -111,6 +111,19 @@ class SidDossierAssignWizard(models.TransientModel):
         ], limit=1)
         return other
 
+    def _sync_related_sale_orders(self, quotations):
+        """Fuerza recálculo inmediato en sale.order para refrescar campos store/related en UI."""
+        quotations = quotations.exists()
+        if not quotations:
+            return
+
+        sale_orders = quotations.mapped('sale_order_id').exists()
+        if not sale_orders:
+            return
+
+        # Escritura noop para invalidar caché/recompute de campos store en la misma transacción.
+        sale_orders.sudo().write({})
+
     # ---------------------------------------------------------------------
     # Onchange / defaults
     # ---------------------------------------------------------------------
@@ -327,6 +340,11 @@ class SidDossierAssignWizard(models.TransientModel):
                 raise UserError(_('Seleccione una carpeta de dossier existente.'))
             dossier_folder = self.existing_folder_id
             target_q.sudo().write({'dossier_folder_id': dossier_folder.id})
+
+            # Si la adenda pasa a usar dossier del principal, limpiar dossier propio previo.
+            if self.contract_kind == 'adenda' and self.addenda_policy == 'use_principal':
+                self.quotation_id.sudo().write({'dossier_folder_id': False})
+
             # Asegurar estructura mínima (idempotente) sin tocar el año
             create_dossier_structure(self.env, dossier_folder)
 
@@ -358,23 +376,26 @@ class SidDossierAssignWizard(models.TransientModel):
 
                 # (B) Creación evitando duplicados (si se fuerza creación, p.ej. adenda con dossier propio)
                 if not dossier_folder:
-                    unique_name = dossier_name
                     if existing_any_year and force_new_folder:
-                        # Evitar crear carpetas con el mismo nombre en nivel 2 (bajo cualquier año).
-                        # Sufijo estable para diferenciar adendas.
-                        base = dossier_name
-                        unique_name = f"{base} (AD{target_q.id})"
-                        i = 2
-                        while _find_existing_dossier_any_year(unique_name):
-                            unique_name = f"{base} (AD{target_q.id}-{i})"
-                            i += 1
+                        raise UserError(_(
+                            'Ya existe un dossier con el nombre "%s" (%s). '\
+                            'No se creará una carpeta con sufijo automáticamente. '\
+                            'Vincule la carpeta existente o cambie la política de adenda.'
+                        ) % (dossier_name, existing_any_year.display_name))
 
-                    dossier_folder = Folder.create({'name': unique_name, 'parent_folder_id': year_folder.id})
+                    dossier_folder = Folder.create({'name': dossier_name, 'parent_folder_id': year_folder.id})
 
                 # Crear subcarpetas estándar bajo el dossier (contratos, certificados, etc.)
                 create_dossier_structure(self.env, dossier_folder)
 
                 target_q.sudo().write({'dossier_folder_id': dossier_folder.id})
+
+                # Si se eligió reutilizar dossier principal desde una adenda, eliminar vínculo propio.
+                if self.contract_kind == 'adenda' and self.addenda_policy == 'use_principal':
+                    self.quotation_id.sudo().write({'dossier_folder_id': False})
+
+        # Refrescar sale.order relacionado para que dossier_folder_id/dossier_asignado se vean al cerrar wizard.
+        self._sync_related_sale_orders(target_q | self.quotation_id)
 
         # Optional: chatter note (if mail.thread available)
         try:
@@ -383,4 +404,4 @@ class SidDossierAssignWizard(models.TransientModel):
         except Exception:
             pass
 
-        return {'type': 'ir.actions.act_window_close'}
+        return {'type': 'ir.actions.client', 'tag': 'reload'}

@@ -230,16 +230,11 @@ class SaleOrderDossierRelated(models.Model):
         for so in self:
             so.tiene_dossier = bool(so.dossier_folder_id)
 
-    @api.depends('quotations_id', 'quotations_id.parent_id', 'quotations_id.dossier_folder_id', 'quotations_id.dossier_root_id')
+    @api.depends('quotations_id', 'quotations_id.dossier_effective_folder_id', 'quotations_id.dossier_effective_folder_id.name')
     def _compute_dossier_asignado(self):
         for so in self:
-            q = so.quotations_id
-            if not q:
-                so.dossier_asignado = False
-                continue
-            # Si la oferta tiene dossier propio (ej. adenda con estructura propia), mostramos su nombre.
-            # Si no, mostramos el nombre del contrato principal.
-            so.dossier_asignado = q.name if q.dossier_folder_id else (q.dossier_root_id.name if q.dossier_root_id else q.name)
+            folder = so.quotations_id.dossier_effective_folder_id
+            so.dossier_asignado = folder.name if folder else False
 
     def action_view_dossier(self):
         self.ensure_one()
