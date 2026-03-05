@@ -112,17 +112,26 @@ class SidDossierAssignWizard(models.TransientModel):
         return other
 
     def _sync_related_sale_orders(self, quotations):
-        """Fuerza recálculo inmediato en sale.order para refrescar campos store/related en UI."""
+        """Fuerza recálculo inmediato en sale.order sin asumir nombre de campo inverso en quotations."""
         quotations = quotations.exists()
-        if not quotations:
-            return
+        SaleOrder = self.env['sale.order'].sudo()
+        sale_orders = self.sale_order_id.exists()
 
-        sale_orders = quotations.mapped('sale_order_id').exists()
+        if quotations:
+            # Distintas instalaciones pueden exponer relaciones diferentes en sale.quotations.
+            for fname in ('sale_order_id', 'order_id', 'sale_id'):
+                if fname in quotations._fields:
+                    sale_orders |= quotations.mapped(fname).exists()
+
+            # Fallback robusto: resolver desde sale.order -> quotations_id (módulo actual).
+            if 'quotations_id' in SaleOrder._fields:
+                sale_orders |= SaleOrder.search([('quotations_id', 'in', quotations.ids)])
+
         if not sale_orders:
             return
 
         # Escritura noop para invalidar caché/recompute de campos store en la misma transacción.
-        sale_orders.sudo().write({})
+        sale_orders.write({})
 
     # ---------------------------------------------------------------------
     # Onchange / defaults
