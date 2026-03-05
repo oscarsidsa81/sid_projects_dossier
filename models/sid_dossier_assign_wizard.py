@@ -358,18 +358,14 @@ class SidDossierAssignWizard(models.TransientModel):
 
                 # (B) Creación evitando duplicados (si se fuerza creación, p.ej. adenda con dossier propio)
                 if not dossier_folder:
-                    unique_name = dossier_name
                     if existing_any_year and force_new_folder:
-                        # Evitar crear carpetas con el mismo nombre en nivel 2 (bajo cualquier año).
-                        # Sufijo estable para diferenciar adendas.
-                        base = dossier_name
-                        unique_name = f"{base} (AD{target_q.id})"
-                        i = 2
-                        while _find_existing_dossier_any_year(unique_name):
-                            unique_name = f"{base} (AD{target_q.id}-{i})"
-                            i += 1
+                        raise UserError(_(
+                            'Ya existe un dossier con el nombre "%s" (%s). '\
+                            'No se creará una carpeta con sufijo automáticamente. '\
+                            'Vincule la carpeta existente o cambie la política de adenda.'
+                        ) % (dossier_name, existing_any_year.display_name))
 
-                    dossier_folder = Folder.create({'name': unique_name, 'parent_folder_id': year_folder.id})
+                    dossier_folder = Folder.create({'name': dossier_name, 'parent_folder_id': year_folder.id})
 
                 # Crear subcarpetas estándar bajo el dossier (contratos, certificados, etc.)
                 create_dossier_structure(self.env, dossier_folder)
