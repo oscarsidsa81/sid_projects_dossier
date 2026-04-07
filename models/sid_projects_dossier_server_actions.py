@@ -51,8 +51,10 @@ def create_dossier_structure(env, workspace_parent_1):
     Folder = env['documents.folder'].sudo()
     Request = env['documents.request_wizard'].sudo()
 
-    # Plantilla de facetas: se mantiene el browse(7) de la acción original.
-    parent_folder_7 = Folder.browse(7)
+    # Plantilla de facetas sin ID hardcodeado: usar XML-ID canónico del módulo.
+    facets_template_folder = env.ref('sid_projects_dossier.sid_workspace_quality_dossiers', raise_if_not_found=False)
+    if not facets_template_folder:
+        facets_template_folder = workspace_parent_1
 
     # Nombres de carpetas (exactamente como la acción original).
     child_folders = [
@@ -96,7 +98,7 @@ def create_dossier_structure(env, workspace_parent_1):
 
     # 1) Facetas para el padre (carpeta raíz del dossier)
     try:
-        similar_facets_parent = parent_folder_7.facet_ids.filtered(lambda f: _is_similar(f.name, child_folders))
+        similar_facets_parent = facets_template_folder.facet_ids.filtered(lambda f: _is_similar(f.name, child_folders))
         if similar_facets_parent:
             workspace_parent_1.write({'facet_ids': [(4, facet.id) for facet in similar_facets_parent]})
     except Exception:
@@ -105,7 +107,7 @@ def create_dossier_structure(env, workspace_parent_1):
 
     # 2) Crear/Completar estructura
     sequence = 10
-    user_id = 8  # se mantiene el usuario fijo del script original
+    user_id = env.user.id
 
     for folder_name in child_folders:
         workspace_child = _get_or_create_folder(
@@ -150,7 +152,7 @@ def create_dossier_structure(env, workspace_parent_1):
 
         # Facetas para cada hijo
         try:
-            similar_facets_child = parent_folder_7.facet_ids.filtered(lambda f: _is_similar(f.name, [folder_name]))
+            similar_facets_child = facets_template_folder.facet_ids.filtered(lambda f: _is_similar(f.name, [folder_name]))
             if similar_facets_child:
                 workspace_child.write({'facet_ids': [(4, facet.id) for facet in similar_facets_child]})
         except Exception:
