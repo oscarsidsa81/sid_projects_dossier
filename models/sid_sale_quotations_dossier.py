@@ -88,7 +88,6 @@ class SaleQuotationsDossier(models.Model):
         ],
         string='Estado del dossier',
         default='en_proceso',
-        tracking=True,
     )
 
     has_dossier = fields.Boolean(
