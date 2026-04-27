@@ -17,7 +17,6 @@ Este addon añade una capa funcional para que el área comercial y documental pu
 Declaradas en el manifiesto:
 
 - `base`
-- `crm`
 - `sale_management`
 - `documents`
 - `oct_sale_extra_fields`
@@ -75,7 +74,7 @@ La función `create_dossier_structure(...)`:
 - crea subniveles por estado (Proveedor, Enviado, Comentarios, Rechazado, Aprobado) donde aplica,
 - crea subniveles NOI,
 - crea “Adendas” bajo “13. Contrato”,
-- genera solicitudes (`documents.request_wizard`) por subcarpeta,
+- genera solicitudes (`documents.request` si está disponible, con fallback a `documents.request_wizard`) por subcarpeta,
 - intenta asociar facetas existentes de Documents.
 
 **Valor funcional**: todos los proyectos quedan con la misma taxonomía documental.
@@ -96,8 +95,8 @@ Además incluye utilidades para reparar/asegurar XML-ID del root durante inicial
 
 - Se define el acceso del wizard para `base.group_user` (lectura/escritura/creación/eliminación).
 - Se crean grupos funcionales:
-  - `Usuario de Dossier`,
-  - `Creador de Dossier`.
+  - `Creador de Dossier`,
+  - `Usuario de Dossier`.
 
 ## Estructura del repositorio
 

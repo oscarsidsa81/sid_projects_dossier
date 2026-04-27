@@ -49,7 +49,8 @@ def create_dossier_structure(env, workspace_parent_1):
         workspace_parent_1 (documents.folder): carpeta raíz del dossier (contrato o adenda)
     """
     Folder = env['documents.folder'].sudo()
-    Request = env['documents.request_wizard'].sudo()
+    request_model_name = 'documents.request' if 'documents.request' in env else 'documents.request_wizard'
+    Request = env[request_model_name].sudo()
 
     # Plantilla de facetas sin ID hardcodeado: usar XML-ID canónico del módulo.
     facets_template_folder = env.ref('sid_projects_dossier.sid_workspace_quality_dossiers', raise_if_not_found=False)

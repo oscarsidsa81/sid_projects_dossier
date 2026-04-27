@@ -69,6 +69,61 @@ def _bind_existing_folders(cr):
             _ensure_xmlid(env, module, "sid_workspace_quality_dossiers_%s" % yname, "documents.folder", yf.id)
 
 
+def _column_exists(cr, table_name, column_name):
+    cr.execute(
+        """
+        SELECT 1
+          FROM information_schema.columns
+         WHERE table_name = %s
+           AND column_name = %s
+        """,
+        (table_name, column_name),
+    )
+    return bool(cr.fetchone())
+
+
+def _migrate_legacy_fields(cr):
+    """Copy legacy custom fields into module fields when present."""
+    # documents.document: x_name_2 -> document_description
+    if _column_exists(cr, "documents_document", "x_name_2") and _column_exists(cr, "documents_document", "document_description"):
+        cr.execute(
+            """
+            UPDATE documents_document
+               SET document_description = x_name_2
+             WHERE COALESCE(document_description, '') = ''
+               AND COALESCE(x_name_2, '') <> ''
+            """
+        )
+
+    # documents.document: x_transmittal -> document_transmittal
+    if _column_exists(cr, "documents_document", "x_transmittal") and _column_exists(cr, "documents_document", "document_transmittal"):
+        cr.execute(
+            """
+            UPDATE documents_document
+               SET document_transmittal = x_transmittal
+             WHERE COALESCE(document_transmittal, '') = ''
+               AND COALESCE(x_transmittal, '') <> ''
+            """
+        )
+
+    # sale.order -> sale.quotations dossier linkage when folder is already present
+    if (
+        _column_exists(cr, "sale_order", "quotations_id")
+        and _column_exists(cr, "sale_order", "dossier_folder_id")
+        and _column_exists(cr, "sale_quotations", "dossier_folder_id")
+    ):
+        cr.execute(
+            """
+            UPDATE sale_quotations sq
+               SET dossier_folder_id = so.dossier_folder_id
+              FROM sale_order so
+             WHERE so.quotations_id = sq.id
+               AND so.dossier_folder_id IS NOT NULL
+               AND sq.dossier_folder_id IS NULL
+            """
+        )
+
+
 def pre_init_bind_quality_dossiers_folders(cr):
     _bind_existing_folders(cr)
 
@@ -76,3 +131,4 @@ def pre_init_bind_quality_dossiers_folders(cr):
 def post_init_bind_quality_dossiers_folders(cr, registry):
     # Keep it idempotent after install/upgrade too.
     _bind_existing_folders(cr)
+    _migrate_legacy_fields(cr)
