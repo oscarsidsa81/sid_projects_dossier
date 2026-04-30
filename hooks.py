@@ -76,3 +76,24 @@ def pre_init_bind_quality_dossiers_folders(cr):
 def post_init_bind_quality_dossiers_folders(cr, registry):
     # Keep it idempotent after install/upgrade too.
     _bind_existing_folders(cr)
+    env = api.Environment(cr, SUPERUSER_ID, {})
+
+    SaleOrder = env["sale.order"].sudo().with_context(active_test=False)
+    Document = env["documents.document"].sudo().with_context(active_test=False)
+
+    # Backfill sale.order.tiene_dossier from historical x_dossier flag.
+    if "x_dossier" in SaleOrder._fields and "tiene_dossier" in SaleOrder._fields:
+        orders = SaleOrder.search([("x_dossier", "=", True)])
+        if orders:
+            orders._compute_tiene_dossier()
+
+    # Backfill document description/transmittal from legacy fields.
+    if "x_name_2" in Document._fields and "document_description" in Document._fields:
+        docs_missing_description = Document.search([("document_description", "=", False), ("x_name_2", "!=", False)])
+        for doc in docs_missing_description:
+            doc.write({"document_description": doc.x_name_2})
+
+    if "x_transmittal" in Document._fields and "document_transmittal" in Document._fields:
+        docs_missing_transmittal = Document.search([("document_transmittal", "=", False), ("x_transmittal", "!=", False)])
+        for doc in docs_missing_transmittal:
+            doc.write({"document_transmittal": doc.x_transmittal})
