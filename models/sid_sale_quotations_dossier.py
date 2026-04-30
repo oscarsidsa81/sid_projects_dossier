@@ -88,7 +88,6 @@ class SaleQuotationsDossier(models.Model):
         ],
         string='Estado del dossier',
         default='en_proceso',
-        tracking=True,
     )
 
     has_dossier = fields.Boolean(
@@ -225,10 +224,10 @@ class SaleOrderDossierRelated(models.Model):
         readonly=True,
     )
 
-    @api.depends('dossier_folder_id')
+    @api.depends('dossier_folder_id', 'x_dossier')
     def _compute_tiene_dossier(self):
         for so in self:
-            so.tiene_dossier = bool(so.dossier_folder_id)
+            so.tiene_dossier = bool(so.dossier_folder_id or (so._fields.get('x_dossier') and so.x_dossier))
 
     @api.depends('quotations_id', 'quotations_id.dossier_effective_folder_id', 'quotations_id.dossier_effective_folder_id.name')
     def _compute_dossier_asignado(self):

@@ -49,7 +49,7 @@ def create_dossier_structure(env, workspace_parent_1):
         workspace_parent_1 (documents.folder): carpeta raíz del dossier (contrato o adenda)
     """
     Folder = env['documents.folder'].sudo()
-    Request = env['documents.request_wizard'].sudo()
+    Request = env.get('documents.request')
 
     # Plantilla de facetas sin ID hardcodeado: usar XML-ID canónico del módulo.
     facets_template_folder = env.ref('sid_projects_dossier.sid_workspace_quality_dossiers', raise_if_not_found=False)
@@ -159,14 +159,16 @@ def create_dossier_structure(env, workspace_parent_1):
             pass
 
         # Solicitud de documentos (idempotente)
-        req_name = f"Solicitud para {workspace_parent_1.name} / {workspace_child.name}"
-        existing_req = Request.search([('name', '=', req_name), ('folder_id', '=', workspace_child.id)], limit=1)
-        if not existing_req:
-            Request.create({
-                'name': req_name,
-                'folder_id': workspace_child.id,
-                'owner_id': user_id,
-            })
+        if Request:
+            request_model = Request.sudo()
+            req_name = f"Solicitud para {workspace_parent_1.name} / {workspace_child.name}"
+            existing_req = request_model.search([('name', '=', req_name), ('folder_id', '=', workspace_child.id)], limit=1)
+            if not existing_req:
+                request_model.create({
+                    'name': req_name,
+                    'folder_id': workspace_child.id,
+                    'owner_id': user_id,
+                })
 
         sequence += 1
 
