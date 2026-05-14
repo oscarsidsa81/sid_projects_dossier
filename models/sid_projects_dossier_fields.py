@@ -150,7 +150,7 @@ class DocumentsDocumentDossier(models.Model):
         if not workspace:
             return
 
-        doc_facet = self._sid_find_facet_by_names(workspace, ['DOC', 'ITP'])
+        doc_facet = self._sid_find_facet_by_names(workspace, ['DOC', 'ITP', 'CONTRATO'])
         estado_facet = self._sid_find_facet_by_names(workspace, ['ESTADO', 'PLANOS'])
         if not doc_facet and not estado_facet:
             return

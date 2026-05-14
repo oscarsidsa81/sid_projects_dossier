@@ -45,6 +45,42 @@ def _ensure_xmlid(env, module, name, model, res_id):
         imd.create(vals)
 
 
+
+
+def _pick_facet(workspace, names):
+    Facet = workspace.env["documents.facet"].sudo().with_context(active_test=False)
+    return Facet.search([("folder_id", "=", workspace.id), ("name", "in", names)], limit=1)
+
+
+def _bind_existing_facets(env, workspace):
+    if not workspace:
+        return
+    module = "sid_projects_dossier"
+
+    # Prefer existing business facets to avoid duplicates on production DBs.
+    doc_facet = _pick_facet(workspace, ["DOC", "ITP", "CONTRATO"])
+    estado_facet = _pick_facet(workspace, ["ESTADO", "PLANOS"])
+
+    if doc_facet:
+        _ensure_xmlid(env, module, "sid_tagcat_doc", "documents.facet", doc_facet.id)
+    if estado_facet:
+        _ensure_xmlid(env, module, "sid_tagcat_estado", "documents.facet", estado_facet.id)
+
+
+def _consolidate_facets(env, workspace):
+    if not workspace:
+        return
+    Facet = env["documents.facet"].sudo().with_context(active_test=False)
+
+    doc_facet = _pick_facet(workspace, ["DOC", "ITP", "CONTRATO"])
+    estado_facet = _pick_facet(workspace, ["ESTADO", "PLANOS"])
+
+    if doc_facet and doc_facet.name != "DOC":
+        doc_facet.write({"name": "DOC"})
+    if estado_facet and estado_facet.name != "ESTADO":
+        estado_facet.write({"name": "ESTADO"})
+
+    _bind_existing_facets(env, workspace)
 def _bind_existing_folders(cr):
     """Bind existing folder structure (root + year folders) to stable xml_ids.
 
@@ -60,6 +96,7 @@ def _bind_existing_folders(cr):
         return
 
     _ensure_xmlid(env, module, "sid_workspace_quality_dossiers", "documents.folder", root.id)
+    _bind_existing_facets(env, root)
 
     # Bind year folders if present (children directly under root)
     year_folders = Folder.search([("parent_folder_id", "=", root.id)])
@@ -77,6 +114,8 @@ def post_init_bind_quality_dossiers_folders(cr, registry):
     # Keep it idempotent after install/upgrade too.
     _bind_existing_folders(cr)
     env = api.Environment(cr, SUPERUSER_ID, {})
+    workspace = env.ref("sid_projects_dossier.sid_workspace_quality_dossiers", raise_if_not_found=False)
+    _consolidate_facets(env, workspace)
 
     SaleOrder = env["sale.order"].sudo().with_context(active_test=False)
     Document = env["documents.document"].sudo().with_context(active_test=False)
